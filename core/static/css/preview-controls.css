@@ -1,0 +1,40 @@
+.preview-toolbar::after {
+    content: "";
+    position: absolute;
+    top: calc(50% - 5px);
+    right: 74px;
+    width: 7px;
+    height: 7px;
+    border-right: 1.5px solid var(--text-2);
+    border-bottom: 1.5px solid var(--text-2);
+    rotate: 45deg;
+    pointer-events: none;
+}
+
+.preview-toolbar select {
+    appearance: none;
+    -webkit-appearance: none;
+    padding-right: 42px;
+    background-image: none;
+}
+
+@media (min-width: 901px) {
+    .preview-stage {
+        width: 100%;
+        height: 100vh;
+        min-height: 0;
+        padding: 16px;
+        overflow: hidden;
+    }
+
+    .reviewer-desktop-shell,
+    .admin-shell {
+        height: min(900px, calc(100vh - 32px));
+    }
+
+    .reviewer-desktop-panel,
+    .demo-reviewer-sidebar,
+    .demo-admin-sidebar {
+        height: 100%;
+    }
+}
