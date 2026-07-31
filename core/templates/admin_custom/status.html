@@ -1,0 +1,85 @@
+{% extends 'admin_custom/admin_base.html' %}
+
+{% block title %}진행 상태 - {{ cycle.title }}{% endblock %}
+
+{% block admin_content %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+            <h2 class="card-title">🚀 피어리뷰 진행 상태 대시보드</h2>
+            <p class="card-subtitle">{{ cycle.title }} | 현재 상태: <span class="badge badge-info" style="font-size: 1rem;">{{ cycle.get_status_display }}</span></p>
+        </div>
+        <div style="display: flex; gap: 0.5rem;">
+            {% if cycle.status == 'DRAFT' %}
+                <form method="POST" action="{% url 'admin_start_cycle_action' cycle_id=cycle.id %}" onsubmit="return confirm('피어리뷰를 시작하시겠습니까? 리뷰어들에게 6자리 PIN 코드 Slack DM이 일괄 발송됩니다.');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-primary" style="padding: 0.75rem 1.25rem;">
+                        🚀 피어리뷰 시작 (인증 DM 발송)
+                    </button>
+                </form>
+            {% elif cycle.status == 'ACTIVE' %}
+                <form method="POST" action="{% url 'admin_send_reminder_action' cycle_id=cycle.id %}" onsubmit="return confirm('미작성 리뷰어들에게 미작성 동료 명단을 포함한 독촉 Slack DM을 전송하시겠습니까?');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn" style="background: var(--warning); color: #ffffff; padding: 0.75rem 1.25rem;">
+                        ⏰ 미작성자 Slack DM 리마인더 발송
+                    </button>
+                </form>
+            {% endif %}
+
+            {% if cycle.is_all_submitted and cycle.status == 'ACTIVE' %}
+                <form method="POST" action="{% url 'admin_generate_reports_action' cycle_id=cycle.id %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn" style="background: var(--primary-light); color: var(--primary); padding: 0.75rem 1.25rem;">
+                        📄 PDF 리포트 일괄 생성 (검토 준비)
+                    </button>
+                </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 진행률 프로그레스 바 -->
+    <div style="margin-top: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-weight: 700;">
+            <span>실시간 전원 제출 완료율</span>
+            <span>{{ cycle.completion_rate }}% ({{ cycle.submitted_assignments_count }}/{{ cycle.total_assignments_count }})</span>
+        </div>
+        <div style="width: 100%; height: 20px; background: var(--gray-200); border-radius: 10px; overflow: hidden;">
+            <div style="width: {{ cycle.completion_rate }}%; height: 100%; background: var(--primary); transition: width 0.3s;"></div>
+        </div>
+    </div>
+</div>
+
+<h3 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 1rem; color: var(--gray-700);">
+    👥 리뷰어별 피어리뷰 작성 현황 및 미작성 동료 목록
+</h3>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem;">
+    {% for r_data in reviewer_status %}
+        <div class="card" style="margin-bottom: 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                <h4 style="font-size: 1.1rem; font-weight: 700;">👤 {{ r_data.reviewer.name }}</h4>
+                {% if r_data.is_all_done %}
+                    <span class="badge badge-success">전원 작성 완료</span>
+                {% else %}
+                    <span class="badge badge-warning">진행 중 ({{ r_data.done_count }}/{{ r_data.total_count }})</span>
+                {% endif %}
+            </div>
+
+            {% if not r_data.is_all_done %}
+                <div style="margin-top: 0.75rem; padding: 0.75rem; background: #FFFBEB; border: 1px solid #FDE68A; border-radius: var(--radius-sm); font-size: 0.85rem;">
+                    <strong style="color: #92400E;">📌 아직 작성하지 않은 동료:</strong><br>
+                    <span style="color: #B45309;">
+                        {% for reviewee in r_data.unsubmitted_reviewees %}
+                            {{ reviewee.name }}{% if not forloop.last %}, {% endif %}
+                        {% endfor %}
+                    </span>
+                </div>
+            {% endif %}
+        </div>
+    {% empty %}
+        <div class="card" style="grid-column: 1 / -1; text-align: center; color: var(--gray-600);">
+            매칭된 리뷰어가 없습니다.
+        </div>
+    {% endfor %}
+</div>
+{% endblock %}

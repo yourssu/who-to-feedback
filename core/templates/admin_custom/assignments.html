@@ -1,0 +1,165 @@
+{% extends 'admin_custom/admin_base.html' %}
+
+{% block title %}매칭 관리 - {{ cycle.title }}{% endblock %}
+
+{% block admin_content %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h2 class="card-title">🔗 리뷰어 - 리뷰이 매칭 관리</h2>
+            <p class="card-subtitle">{{ cycle.title }} (상태: <strong>{{ cycle.get_status_display }}</strong>)</p>
+        </div>
+        <div style="display: flex; gap: 0.5rem;">
+            <form method="POST" action="{% url 'admin_auto_match' cycle_id=cycle.id %}" onsubmit="return confirm('모든 팀원 간 360도 리뷰 매칭을 일괄 생성하시겠습니까?');">
+                {% csrf_token %}
+                <button type="submit" class="btn" style="background: var(--primary-light); color: var(--primary);">
+                    ⚡ 팀 전체 360도 매칭 생성
+                </button>
+            </form>
+            <button onclick="document.getElementById('assignmentModal').classList.add('open')" class="btn btn-primary">
+                + 매칭 개별 추가
+            </button>
+        </div>
+    </div>
+
+    {% if cycle.status == 'ACTIVE' %}
+        <div class="alert alert-info" style="margin-top: 1rem; margin-bottom: 0;">
+            💡 <strong>안내:</strong> 피어리뷰가 <strong>진행 중(ACTIVE)</strong>인 상태입니다. 진행 도중 매칭을 추가하면 해당 신규 리뷰어에게 <strong>인증코드 Slack DM이 자동 발송</strong>됩니다.
+        </div>
+    {% endif %}
+</div>
+
+<table class="table-custom">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>리뷰 작성자 (Reviewer)</th>
+            <th>리뷰 대상자 (Reviewee)</th>
+            <th>제출 상태</th>
+            <th>제출/마지막 알림 시각</th>
+            <th>관리</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for a in assignments %}
+            <tr>
+                <td>{{ a.id }}</td>
+                <td><strong>{{ a.reviewer.name }}</strong> ({{ a.reviewer.department|default:"팀원" }})</td>
+                <td>➡️ <strong>{{ a.reviewee.name }}</strong> ({{ a.reviewee.department|default:"팀원" }})</td>
+                <td>
+                    {% if a.is_submitted %}
+                        <span class="badge badge-success">제출 완료</span>
+                    {% else %}
+                        <span class="badge badge-warning">미제출</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if a.submitted_at %}
+                        {{ a.submitted_at|date:"m/d H:i" }} 제출됨
+                    {% elif a.last_reminded_at %}
+                        {{ a.last_reminded_at|date:"m/d H:i" }} 리마인드됨
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+                <td>
+                    <form method="POST" action="{% url 'admin_delete_assignment' assignment_id=a.id %}" onsubmit="return confirm('이 매칭을 삭제하시겠습니까?');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn" style="background: #FEE2E2; color: #991B1B; padding: 0.3rem 0.6rem; font-size: 0.8rem;">삭제</button>
+                    </form>
+                </td>
+            </tr>
+        {% empty %}
+            <tr>
+                <td colspan="6" style="text-align: center; color: var(--gray-600); padding: 2rem;">
+                    설정된 매칭이 없습니다. [매칭 개별 추가] 또는 [팀 전체 360도 매칭 생성] 버튼으로 지정해 주세요.
+                </td>
+            </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<!-- 매칭 추가 모달 (팀/부서 필터링 지원) -->
+<div id="assignmentModal" class="modal">
+    <div class="modal-content" style="max-width: 550px;">
+        <h3 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 1rem;">+ 피어리뷰 매칭 추가</h3>
+        <form method="POST" action="{% url 'admin_add_assignment' cycle_id=cycle.id %}">
+            {% csrf_token %}
+
+            <!-- 1. 리뷰어 선택 (팀 필터링) -->
+            <div style="background: var(--gray-50); padding: 1rem; border-radius: var(--radius-sm); margin-bottom: 1rem; border: 1px solid var(--gray-200);">
+                <div class="form-group" style="margin-bottom: 0.75rem;">
+                    <label class="form-label" style="color: var(--primary);">👤 [1] 리뷰 작성자 팀(부서) 선택</label>
+                    <select class="form-control" id="reviewerDeptSelect" onchange="filterMembers('reviewerDeptSelect', 'reviewerSelect')">
+                        <option value="">-- 전체 팀(부서) 보기 --</option>
+                        {% for d in departments %}
+                            <option value="{{ d }}">{{ d }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">리뷰 작성자 (Reviewer) 선택</label>
+                    <select name="reviewer_id" class="form-control" id="reviewerSelect" required>
+                        {% for m in members %}
+                            <option value="{{ m.id }}" data-department="{{ m.department }}">{{ m.name }} ({{ m.department|default:"팀원" }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <!-- 2. 리뷰이 선택 (팀 필터링) -->
+            <div style="background: var(--gray-50); padding: 1rem; border-radius: var(--radius-sm); margin-bottom: 1.5rem; border: 1px solid var(--gray-200);">
+                <div class="form-group" style="margin-bottom: 0.75rem;">
+                    <label class="form-label" style="color: var(--primary);">🎯 [2] 리뷰 대상자 팀(부서) 선택</label>
+                    <select class="form-control" id="revieweeDeptSelect" onchange="filterMembers('revieweeDeptSelect', 'revieweeSelect')">
+                        <option value="">-- 전체 팀(부서) 보기 --</option>
+                        {% for d in departments %}
+                            <option value="{{ d }}">{{ d }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">리뷰 대상자 (Reviewee) 선택</label>
+                    <select name="reviewee_id" class="form-control" id="revieweeSelect" required>
+                        {% for m in members %}
+                            <option value="{{ m.id }}" data-department="{{ m.department }}">{{ m.name }} ({{ m.department|default:"팀원" }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                <button type="button" onclick="document.getElementById('assignmentModal').classList.remove('open')" class="btn" style="background: var(--gray-100);">취소</button>
+                <button type="submit" class="btn btn-primary">매칭 저장</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    function filterMembers(deptSelectId, memberSelectId) {
+        var selectedDept = document.getElementById(deptSelectId).value;
+        var memberSelect = document.getElementById(memberSelectId);
+        var options = memberSelect.options;
+        var firstVisible = null;
+
+        for (var i = 0; i < options.length; i++) {
+            var opt = options[i];
+            var optDept = opt.getAttribute('data-department');
+
+            if (!selectedDept || optDept === selectedDept) {
+                opt.style.display = '';
+                if (!firstVisible) firstVisible = opt;
+            } else {
+                opt.style.display = 'none';
+            }
+        }
+
+        if (firstVisible) {
+            memberSelect.value = firstVisible.value;
+        }
+    }
+</script>
+{% endblock %}

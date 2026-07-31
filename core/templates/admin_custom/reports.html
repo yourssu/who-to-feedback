@@ -1,0 +1,96 @@
+{% extends 'admin_custom/admin_base.html' %}
+
+{% block title %}결과 검토 - {{ cycle.title }}{% endblock %}
+
+{% block admin_content %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h2 class="card-title">🔍 피어리뷰 결과 리포트 검토 & 배포</h2>
+            <p class="card-subtitle">{{ cycle.title }} | 회차 상태: <strong>{{ cycle.get_status_display }}</strong></p>
+        </div>
+        <div>
+            {% if cycle.status == 'COMPLETED' %}
+                <form method="POST" action="{% url 'admin_publish_reports_action' cycle_id=cycle.id %}" onsubmit="return confirm('모든 피어리뷰 대상자에게 PDF 리포트를 Slack DM으로 승인 및 일괄 배포하시겠습니까?');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-primary" style="background: var(--success); padding: 0.75rem 1.5rem; font-size: 1rem;">
+                        🚀 검토 완료 및 Slack DM 일괄 배포
+                    </button>
+                </form>
+            {% elif cycle.status == 'CLOSED' %}
+                <span class="badge badge-success" style="font-size: 1rem; padding: 0.5rem 1rem;">
+                    ✅ Slack DM 배포 완료됨
+                </span>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<h3 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 1rem; color: var(--gray-700);">
+    📑 생성된 결과 리포트 목록 (총 {{ reports|length }}건)
+</h3>
+
+<div style="display: flex; flex-direction: column; gap: 1rem;">
+    {% for r in reports %}
+        <div class="card" style="margin-bottom: 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <div>
+                    <h4 style="font-size: 1.2rem; font-weight: 700;">
+                        👤 {{ r.reviewee.name }} ({{ r.reviewee.department|default:"팀원" }})
+                    </h4>
+                    <p style="font-size: 0.85rem; color: var(--gray-600); margin-top: 0.25rem;">
+                        Slack Member ID: <code>{{ r.reviewee.slack_user_id }}</code> | 생성 시각: {{ r.created_at|date:"Y-m-d H:i" }}
+                    </p>
+                </div>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    {% if r.pdf_file %}
+                        <a href="{{ r.pdf_file.url }}" target="_blank" class="btn" style="background: var(--gray-100); color: var(--gray-700); font-size: 0.9rem;">
+                            📄 PDF 다운로드/미리보기
+                        </a>
+                    {% endif %}
+                    {% if r.is_sent %}
+                        <span class="badge badge-success">발송 완료</span>
+                    {% else %}
+                        <span class="badge badge-warning">검토 대기 중</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- 웹 요약 프리뷰 -->
+            <div style="padding: 1rem; background: var(--gray-50); border-radius: var(--radius-sm); border: 1px solid var(--gray-200);">
+                <div style="font-size: 0.9rem; font-weight: 700; color: var(--gray-700); margin-bottom: 0.5rem;">
+                    🌐 피드백 익명 요약 미리보기:
+                </div>
+                {% for q_data in r.preview_data.questions_data %}
+                    <div style="margin-bottom: 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px dashed var(--gray-300);">
+                        <strong style="font-size: 0.9rem; color: var(--dark);">Q{{ q_data.order }}. {{ q_data.content }}</strong>
+                        {% if q_data.question_type == 'RATING' %}
+                            <span class="badge badge-info" style="margin-left: 0.5rem;">평균 {{ q_data.avg_rating }}점</span>
+                        {% elif q_data.question_type == 'TEXT' %}
+                            <div style="margin-top: 0.3rem; font-size: 0.85rem; color: var(--gray-600);">
+                                {% for ans in q_data.text_answers %}
+                                    💬 "{{ ans }}"{% if not forloop.last %}<br>{% endif %}
+                                {% empty %}
+                                    <span style="font-style: italic;">작성된 서술형 피드백 없음</span>
+                                {% endfor %}
+                            </div>
+                        {% elif q_data.question_type in 'SINGLE_CHOICE,MULTIPLE_CHOICE' %}
+                            <div style="margin-top: 0.3rem; display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                                {% for opt in q_data.options_summary %}
+                                    <span style="background: #ffffff; border: 1px solid var(--gray-300); padding: 0.2rem 0.5rem; border-radius: 9999px; font-size: 0.8rem;">
+                                        {{ opt.text }} ({{ opt.count }}명)
+                                    </span>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    {% empty %}
+        <div class="card" style="text-align: center; color: var(--gray-600);">
+            생성된 리포트가 없습니다. 모든 리뷰어가 작성을 완료한 후 [PDF 리포트 일괄 생성]을 진행해 주세요.
+        </div>
+    {% endfor %}
+</div>
+{% endblock %}

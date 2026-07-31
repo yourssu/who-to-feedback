@@ -1,0 +1,88 @@
+{% extends 'admin_custom/admin_base.html' %}
+
+{% block title %}관리자 대시보드{% endblock %}
+
+{% block admin_content %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h2 class="card-title">👋 관리자 센터에 오신 것을 환영합니다</h2>
+            <p class="card-subtitle">피어리뷰 회차 세팅, 팀원 관리, 질문지 제작, 매칭, 리마인더 및 PDF 검토 배포를 한 곳에서 관리하세요.</p>
+        </div>
+        <button onclick="document.getElementById('cycleModal').classList.add('open')" class="btn btn-primary">
+            + 신규 회차 생성
+        </button>
+    </div>
+</div>
+
+<h3 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 1rem; color: var(--gray-700);">
+    📌 피어리뷰 회차 목록 (총 {{ cycles|length }}건)
+</h3>
+
+<div style="display: flex; flex-direction: column; gap: 1rem;">
+    {% for c in cycles %}
+        <div class="card" style="margin-bottom: 0;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                    <h4 style="font-size: 1.2rem; font-weight: 700;">{{ c.title }}</h4>
+                    <p style="font-size: 0.9rem; color: var(--gray-600); margin-top: 0.25rem;">
+                        📅 기간: {{ c.start_at|date:"Y-m-d H:i" }} ~ {{ c.end_at|date:"Y-m-d H:i" }}
+                    </p>
+                </div>
+                <div>
+                    <span class="badge {% if c.status == 'CLOSED' %}badge-success{% elif c.status == 'COMPLETED' %}badge-info{% elif c.status == 'ACTIVE' %}badge-warning{% else %}badge-info{% endif %}" style="font-size: 0.95rem; padding: 0.4rem 0.8rem;">
+                        {{ c.get_status_display }} (제출율: {{ c.completion_rate }}%)
+                    </span>
+                </div>
+            </div>
+
+            <hr style="border: none; border-top: 1px solid var(--gray-200); margin: 1rem 0;">
+
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                <a href="{% url 'admin_questions' cycle_id=c.id %}" class="btn" style="background: var(--gray-100); color: var(--gray-700); font-size: 0.85rem; padding: 0.5rem 1rem;">
+                    📝 질문지 제작 ({{ c.questions.count }}개)
+                </a>
+                <a href="{% url 'admin_assignments' cycle_id=c.id %}" class="btn" style="background: var(--gray-100); color: var(--gray-700); font-size: 0.85rem; padding: 0.5rem 1rem;">
+                    🔗 매칭 관리 ({{ c.assignments.count }}건)
+                </a>
+                <a href="{% url 'admin_status_detail' cycle_id=c.id %}" class="btn" style="background: var(--primary-light); color: var(--primary); font-size: 0.85rem; padding: 0.5rem 1rem;">
+                    🚀 진행 상태 & 리마인더
+                </a>
+                <a href="{% url 'admin_reports' cycle_id=c.id %}" class="btn" style="background: #E0E7FF; color: #3730A3; font-size: 0.85rem; padding: 0.5rem 1rem;">
+                    📄 HTML/PDF 검토 & 배포
+                </a>
+            </div>
+        </div>
+    {% empty %}
+        <div class="card" style="text-align: center; color: var(--gray-600);">
+            등록된 피어리뷰 회차가 없습니다. 우측 상단의 [신규 회차 생성] 버튼을 누르세요.
+        </div>
+    {% endfor %}
+</div>
+
+<!-- 회차 생성 모달 -->
+<div id="cycleModal" class="modal">
+    <div class="modal-content">
+        <h3 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 1rem;">+ 신규 피어리뷰 회차 생성</h3>
+        <form method="POST" action="{% url 'admin_create_cycle' %}">
+            {% csrf_token %}
+            <div class="form-group">
+                <label class="form-label">회차 제목</label>
+                <input type="text" name="title" class="form-control" placeholder="예: 2026년 Q3 피어리뷰" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">시작 일시</label>
+                <input type="datetime-local" name="start_at" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">마감 일시</label>
+                <input type="datetime-local" name="end_at" class="form-control" required>
+            </div>
+            <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1.5rem;">
+                <button type="button" onclick="document.getElementById('cycleModal').classList.remove('open')" class="btn" style="background: var(--gray-100);">취소</button>
+                <button type="submit" class="btn btn-primary">생성하기</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

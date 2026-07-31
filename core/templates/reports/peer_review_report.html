@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ reviewee.name }} 님 피어리뷰 결과 리포트</title>
+    <style>
+        @page {
+            size: A4 portrait;
+            margin: 2cm;
+        }
+        body {
+            font-family: 'Pretendard', sans-serif, 'Malgun Gothic', 'Apple SD Gothic Neo';
+            color: #1F2937;
+            line-height: 1.6;
+        }
+        .header {
+            text-align: center;
+            border-bottom: 2px solid #4F46E5;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            color: #4F46E5;
+            font-size: 22pt;
+            margin: 0 0 5px 0;
+        }
+        .header p {
+            color: #4B5563;
+            font-size: 11pt;
+            margin: 0;
+        }
+        .summary-box {
+            background-color: #EEF2FF;
+            border-left: 4px solid #4F46E5;
+            padding: 15px;
+            margin-bottom: 30px;
+            border-radius: 4px;
+        }
+        .summary-box td {
+            font-size: 11pt;
+        }
+        .question-section {
+            margin-bottom: 25px;
+            page-break-inside: avoid;
+        }
+        .question-title {
+            font-size: 13pt;
+            font-weight: bold;
+            color: #111827;
+            background-color: #F3F4F6;
+            padding: 8px 12px;
+            border-radius: 4px;
+            margin-bottom: 12px;
+        }
+        .rating-badge {
+            display: inline-block;
+            background-color: #4F46E5;
+            color: #ffffff;
+            font-size: 14pt;
+            font-weight: bold;
+            padding: 6px 15px;
+            border-radius: 20px;
+            margin-top: 5px;
+        }
+        .feedback-card {
+            background-color: #F9FAFB;
+            border: 1px solid #E5E7EB;
+            padding: 12px 15px;
+            margin-bottom: 10px;
+            border-radius: 6px;
+            font-size: 10.5pt;
+        }
+        .tag-chip {
+            display: inline-block;
+            background-color: #E0E7FF;
+            color: #3730A3;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 9.5pt;
+            font-weight: bold;
+            margin-right: 5px;
+            margin-bottom: 5px;
+        }
+        .footer-note {
+            margin-top: 40px;
+            text-align: center;
+            font-size: 9pt;
+            color: #9CA3AF;
+            border-top: 1px solid #E5E7EB;
+            padding-top: 15px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>📊 피어리뷰 결과 리포트</h1>
+        <p>{{ cycle.title }}</p>
+    </div>
+
+    <div class="summary-box">
+        <table width="100%" cellspacing="0" cellpadding="0">
+            <tr>
+                <td><strong>대상자:</strong> {{ reviewee.name }} ({{ reviewee.department|default:"팀원" }})</td>
+                <td align="right"><strong>수신된 피드백 응답 수:</strong> {{ total_feedback_received }}건</td>
+            </tr>
+        </table>
+    </div>
+
+    {% for q in questions_data %}
+        <div class="question-section">
+            <div class="question-title">
+                Q{{ q.order }}. {{ q.content }}
+            </div>
+
+            {% if q.question_type == 'RATING' %}
+                <div style="text-align: center; padding: 15px 0;">
+                    <div class="rating-badge">평균 {{ q.avg_rating }}점 / 5.0점</div>
+                    <p style="font-size: 9.5pt; color: #6B7280; margin-top: 8px;">
+                        (최저 {{ q.min_rating }}점 ~ 최고 {{ q.max_rating }}점)
+                    </p>
+                </div>
+
+            {% elif q.question_type == 'TEXT' %}
+                {% if q.text_answers %}
+                    {% for ans in q.text_answers %}
+                        <div class="feedback-card">
+                            💬 "{{ ans }}"
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <p style="color: #9CA3AF; font-style: italic;">작성된 주관식 피드백이 없습니다.</p>
+                {% endif %}
+
+            {% elif q.question_type == 'SINGLE_CHOICE' or q.question_type == 'MULTIPLE_CHOICE' %}
+                <div style="padding: 5px 0;">
+                    {% for opt in q.options_summary %}
+                        <div class="tag-chip">
+                            {{ opt.text }} ({{ opt.count }}명 선택)
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </div>
+    {% endfor %}
+
+    <div class="footer-note">
+        본 리포트는 동료들의 솔직한 평가와 무기명 피드백을 기반으로 자동 생성되었습니다.<br>
+        &copy; 2026 Peer Review Automation System. All rights reserved.
+    </div>
+
+</body>
+</html>

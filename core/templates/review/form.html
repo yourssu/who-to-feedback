@@ -1,0 +1,87 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ assignment.reviewee.name }} 님에 대한 피어리뷰 작성{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h2 class="card-title">👤 {{ assignment.reviewee.name }} 님 피어리뷰 작성</h2>
+            <p class="card-subtitle">
+                솔직하고 건설적인 피드백은 동료의 성장에 큰 도움이 됩니다. (작성 내용은 익명 처리됩니다)
+            </p>
+        </div>
+        <a href="{% url 'review_dashboard' %}" class="btn-logout">← 목록으로 돌아가기</a>
+    </div>
+
+    <form method="POST">
+        {% csrf_token %}
+
+        {% for item in questions_data %}
+            <div class="form-group" style="padding: 1.25rem; border: 1px solid var(--gray-200); border-radius: var(--radius-md); background: var(--gray-50); margin-bottom: 1.5rem;">
+                <label class="form-label" style="font-size: 1.1rem; color: var(--dark); margin-bottom: 0.75rem;">
+                    Q{{ item.question.order }}. {{ item.question.content }}
+                </label>
+
+                {% if item.question.question_type == 'RATING' %}
+                    <div class="rating-scale">
+                        {% for val in rating_range %}
+                            <div class="rating-option">
+                                <input type="radio" 
+                                       name="q_{{ item.question.id }}_rating" 
+                                       id="q_{{ item.question.id }}_r_{{ val }}" 
+                                       value="{{ val }}" 
+                                       {% if item.existing_answer and item.existing_answer.rating_value == val %}checked{% endif %} 
+                                       required>
+                                <label for="q_{{ item.question.id }}_r_{{ val }}" class="rating-label">
+                                    {{ val }}점
+                                </label>
+                            </div>
+                        {% endfor %}
+                    </div>
+
+                {% elif item.question.question_type == 'TEXT' %}
+                    <textarea name="q_{{ item.question.id }}_text" 
+                              rows="4" 
+                              class="form-control" 
+                              placeholder="동료에게 전달할 세심하고 구체적인 피드백을 작성해 주세요..." 
+                              required>{% if item.existing_answer %}{{ item.existing_answer.answer_text }}{% endif %}</textarea>
+
+                {% elif item.question.question_type == 'SINGLE_CHOICE' %}
+                    <div class="option-group">
+                        {% for opt in item.options %}
+                            <label class="option-item">
+                                <input type="radio" 
+                                       name="q_{{ item.question.id }}_single" 
+                                       value="{{ opt.id }}" 
+                                       {% if item.existing_selected and opt.id in item.existing_selected %}checked{% endif %} 
+                                       required>
+                                <span>{{ opt.option_text }}</span>
+                            </label>
+                        {% endfor %}
+                    </div>
+
+                {% elif item.question.question_type == 'MULTIPLE_CHOICE' %}
+                    <div class="option-group">
+                        {% for opt in item.options %}
+                            <label class="option-item">
+                                <input type="checkbox" 
+                                       name="q_{{ item.question.id }}_multi" 
+                                       value="{{ opt.id }}" 
+                                       {% if item.existing_selected and opt.id in item.existing_selected %}checked{% endif %}>
+                                <span>{{ opt.option_text }}</span>
+                            </label>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+        {% endfor %}
+
+        <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+            <button type="submit" class="btn btn-primary btn-block" style="padding: 1rem; font-size: 1.1rem;">
+                💾 리뷰 제출 완료하기
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

@@ -1,0 +1,51 @@
+{% extends 'admin_custom/admin_base.html' %}
+
+{% block title %}Slack DM 메시지 전송{% endblock %}
+
+{% block admin_content %}
+<div class="card" style="max-width: 700px; margin: 0 auto;">
+    <h2 class="card-title">💬 관리자 커스텀 Slack DM 메시지 발송</h2>
+    <p class="card-subtitle">특정 팀원 또는 전체 팀원에게 공지사항이나 안내 메시지를 Slack DM으로 직접 발송합니다.</p>
+
+    <form method="POST" action="{% url 'admin_send_message' %}">
+        {% csrf_token %}
+        <div class="form-group">
+            <label class="form-label">수신 대상 선택</label>
+            <select name="recipient_type" class="form-control" id="recipientType" onchange="toggleMemberSelect()" required>
+                <option value="ALL">📢 전체 팀원 일괄 전송</option>
+                <option value="SPECIFIC">👤 특정 팀원 지정 선택</option>
+            </select>
+        </div>
+
+        <div class="form-group" id="memberSelectGroup" style="display: none;">
+            <label class="form-label">수신 팀원 지정</label>
+            <select name="member_id" class="form-control">
+                {% for m in members %}
+                    <option value="{{ m.id }}">{{ m.name }} ({{ m.email }} / Slack: {{ m.slack_user_id }})</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Slack DM 메시지 내용</label>
+            <textarea name="message_text" rows="6" class="form-control" placeholder="발송할 Slack DM 메시지 내용을 입력하세요..." required></textarea>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block" style="padding: 0.9rem;">
+            🚀 Slack DM 메시지 발송하기
+        </button>
+    </form>
+</div>
+
+<script>
+    function toggleMemberSelect() {
+        var type = document.getElementById('recipientType').value;
+        var group = document.getElementById('memberSelectGroup');
+        if (type === 'SPECIFIC') {
+            group.style.display = 'block';
+        } else {
+            group.style.display = 'none';
+        }
+    }
+</script>
+{% endblock %}

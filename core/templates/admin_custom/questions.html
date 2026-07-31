@@ -1,0 +1,97 @@
+{% extends 'admin_custom/admin_base.html' %}
+
+{% block title %}질문지 제작 - {{ cycle.title }}{% endblock %}
+
+{% block admin_content %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h2 class="card-title">📝 피어리뷰 질문지 제작</h2>
+            <p class="card-subtitle">{{ cycle.title }} 문항 설정 (척도, 주관식, 객관식 단일/다중선택)</p>
+        </div>
+        <button onclick="document.getElementById('questionModal').classList.add('open')" class="btn btn-primary">
+            + 신규 질문 추가
+        </button>
+    </div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 1rem;">
+    {% for q in questions %}
+        <div class="card" style="margin-bottom: 0;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                    <span class="badge badge-info" style="margin-bottom: 0.5rem;">
+                        {{ q.get_question_type_display }}
+                    </span>
+                    <h4 style="font-size: 1.1rem; font-weight: 700; margin-top: 0.25rem;">
+                        Q{{ q.order }}. {{ q.content }}
+                    </h4>
+                </div>
+                <form method="POST" action="{% url 'admin_delete_question' question_id=q.id %}" onsubmit="return confirm('이 질문을 삭제하시겠습니까?');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn" style="background: #FEE2E2; color: #991B1B; padding: 0.3rem 0.6rem; font-size: 0.8rem;">삭제</button>
+                </form>
+            </div>
+
+            {% if q.question_type in 'SINGLE_CHOICE,MULTIPLE_CHOICE' %}
+                <div style="margin-top: 1rem; padding: 0.75rem; background: var(--gray-50); border-radius: var(--radius-sm);">
+                    <div style="font-size: 0.85rem; font-weight: 700; color: var(--gray-600); margin-bottom: 0.5rem;">
+                        📌 등록된 선택지 항목:
+                    </div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem;">
+                        {% for opt in q.options.all %}
+                            <span style="background: #ffffff; border: 1px solid var(--gray-300); padding: 0.25rem 0.6rem; border-radius: 9999px; font-size: 0.85rem;">
+                                {{ opt.order }}. {{ opt.option_text }}
+                            </span>
+                        {% empty %}
+                            <span style="color: var(--gray-600); font-size: 0.85rem;">선택지가 등록되지 않았습니다.</span>
+                        {% endfor %}
+                    </div>
+
+                    <!-- 선택지 추가 폼 -->
+                    <form method="POST" action="{% url 'admin_add_option' question_id=q.id %}" style="display: flex; gap: 0.5rem;">
+                        {% csrf_token %}
+                        <input type="text" name="option_text" class="form-control" placeholder="새 선택지 항목 내용 입력" required style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">
+                        <button type="submit" class="btn btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; white-space: nowrap;">+ 선택지 추가</button>
+                    </form>
+                </div>
+            {% endif %}
+        </div>
+    {% empty %}
+        <div class="card" style="text-align: center; color: var(--gray-600);">
+            등록된 질문이 없습니다. 우측 상단의 [+ 신규 질문 추가] 버튼을 눌러 피어리뷰 문항을 작성하세요.
+        </div>
+    {% endfor %}
+</div>
+
+<!-- 질문 추가 모달 -->
+<div id="questionModal" class="modal">
+    <div class="modal-content">
+        <h3 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 1rem;">+ 신규 피어리뷰 질문 추가</h3>
+        <form method="POST" action="{% url 'admin_add_question' cycle_id=cycle.id %}">
+            {% csrf_token %}
+            <div class="form-group">
+                <label class="form-label">문항 순서</label>
+                <input type="number" name="order" class="form-control" value="{{ questions.count|add:1 }}" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">질문 유형</label>
+                <select name="question_type" class="form-control" required>
+                    <option value="RATING">5점 척도 평가</option>
+                    <option value="TEXT">서술형 주관식 텍스트</option>
+                    <option value="SINGLE_CHOICE">객관식 단일 선택 (Radio)</option>
+                    <option value="MULTIPLE_CHOICE">객관식 다중 선택 (Checkbox 태그)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">질문 내용</label>
+                <textarea name="content" rows="3" class="form-control" placeholder="예: 동료의 협업 태도와 소통 능력을 평가해 주세요." required></textarea>
+            </div>
+            <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1.5rem;">
+                <button type="button" onclick="document.getElementById('questionModal').classList.remove('open')" class="btn" style="background: var(--gray-100);">취소</button>
+                <button type="submit" class="btn btn-primary">질문 생성</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

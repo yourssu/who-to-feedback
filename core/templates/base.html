@@ -1,0 +1,39 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}피어리뷰 자동화 시스템{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+</head>
+<body>
+    <nav class="navbar">
+        <a href="{% url 'review_dashboard' %}" class="navbar-brand">
+            🚀 Peer Review Automation
+        </a>
+        <div class="navbar-user">
+            {% if request.session.member_id %}
+                <span>👤 <strong>{{ request.session.member_name }}</strong> 님</span>
+                <a href="{% url 'logout' %}" class="btn-logout">로그아웃</a>
+            {% endif %}
+        </div>
+    </nav>
+
+    <main class="container">
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags }}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        {% endif %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        &copy; 2026 Peer Review Automation System. All rights reserved.
+    </footer>
+</body>
+</html>

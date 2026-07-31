@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+
+{% block title %}리뷰 할당 목록 - {{ cycle.title }}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+            <h2 class="card-title">{{ cycle.title }}</h2>
+            <p class="card-subtitle">
+                📅 작성 기간: {{ cycle.start_at|date:"Y-m-d H:i" }} ~ {{ cycle.end_at|date:"Y-m-d H:i" }}
+            </p>
+        </div>
+        <div>
+            {% if is_completed %}
+                <span class="badge badge-success" style="font-size: 0.9rem; padding: 0.5rem 1rem;">
+                    ✅ 모든 작성 완료
+                </span>
+            {% else %}
+                <span class="badge badge-warning" style="font-size: 0.9rem; padding: 0.5rem 1rem;">
+                    ⏳ 작성 진행 중 ({{ completed_count }}/{{ assignments|length }})
+                </span>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<h3 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 1rem; color: var(--gray-700);">
+    📌 나에게 할당된 동료 리뷰 목록
+</h3>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem;">
+    {% for item in assignments %}
+        <div class="card" style="margin-bottom: 0; display: flex; flex-direction: column; justify-content: space-between;">
+            <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                    <span style="font-size: 1.2rem; font-weight: 700;">
+                        👤 {{ item.assignment.reviewee.name }}
+                    </span>
+                    {% if item.assignment.is_submitted %}
+                        <span class="badge badge-success">작성 완료</span>
+                    {% else %}
+                        <span class="badge badge-warning">미작성</span>
+                    {% endif %}
+                </div>
+                <p style="font-size: 0.9rem; color: var(--gray-600); margin-bottom: 1.5rem;">
+                    소속: {{ item.assignment.reviewee.department|default:"팀원" }}
+                </p>
+            </div>
+
+            <div>
+                {% if item.assignment.is_submitted %}
+                    <a href="{% url 'review_form' assignment_id=item.assignment.id %}" 
+                       class="btn btn-block" 
+                       style="background: var(--gray-100); color: var(--gray-700);">
+                        수정하기
+                    </a>
+                {% else %}
+                    <a href="{% url 'review_form' assignment_id=item.assignment.id %}" 
+                       class="btn btn-primary btn-block">
+                        리뷰 작성하기 →
+                    </a>
+                {% endif %}
+            </div>
+        </div>
+    {% empty %}
+        <div class="card" style="grid-column: 1 / -1; text-align: center; color: var(--gray-600);">
+            현재 할당된 피어리뷰가 없습니다.
+        </div>
+    {% endfor %}
+</div>
+{% endblock %}

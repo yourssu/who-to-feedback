@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+
+{% block title %}로그인 - 피어리뷰 인증{% endblock %}
+
+{% block content %}
+<div style="max-width: 440px; margin: 3rem auto;">
+    <div class="card" style="box-shadow: var(--shadow-lg); text-align: center;">
+        <div style="font-size: 3rem; margin-bottom: 0.5rem;">🔒</div>
+        <h2 class="card-title">Slack DM 인증 로그인</h2>
+        <p class="card-subtitle">
+            Slack DM으로 발송된 <strong>6자리 개인 인증 핀코드</strong>를 입력해 주세요.
+        </p>
+
+        <form method="POST" action="{% url 'login' %}">
+            {% csrf_token %}
+            <div class="form-group" style="text-align: left;">
+                <label for="code" class="form-label">인증번호 (PIN Code)</label>
+                <input type="text" 
+                       name="code" 
+                       id="code" 
+                       class="form-control" 
+                       placeholder="예: 123456" 
+                       maxlength="6" 
+                       required 
+                       style="font-size: 1.5rem; letter-spacing: 0.5rem; text-align: center; font-weight: 700;">
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-block" style="padding: 0.9rem;">
+                인증 완료 및 작성하기
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}
