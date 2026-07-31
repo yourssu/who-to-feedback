@@ -33,7 +33,6 @@ def review_dashboard(request):
     completion_rate = int((submitted_count / total_count * 100)) if total_count > 0 else 0
     is_all_completed = (total_count > 0 and submitted_count == total_count)
 
-    # 마감 임박 계산
     days_left = (cycle.end_at - timezone.now()).days if cycle.end_at > timezone.now() else 0
 
     return render(request, 'review/dashboard.html', {
@@ -50,7 +49,7 @@ def review_dashboard(request):
 
 
 def review_form(request, assignment_id):
-    """4가지 문항 타입 동적 작성 폼 및 마감 시간 제어"""
+    """4가지 문항 타입 동적 작성 폼, 임시 저장 복원 및 마감 시간 제어"""
     member_id = request.session.get('member_id')
     if not member_id:
         return redirect('login')
@@ -110,16 +109,35 @@ def review_form(request, assignment_id):
         messages.success(request, f"'{assignment.reviewee.name}' 님에 대한 피어리뷰가 성공적으로 제출되었습니다!")
         return redirect('review_dashboard')
 
-    # GET 요청 시 기존 답변 및 척도 라벨 데이터 준비
+    # GET 요청 시 기존 제출 답변 및 임시 저장(draft_data) 데이터 복원 렌더링 준비
     questions_data = []
     text_5_labels = {1: "매우 아님", 2: "약간 아님", 3: "보통임", 4: "약간 그럼", 5: "매우 그럼"}
     numeric_5_labels = {1: "1점", 2: "2점", 3: "3점", 4: "4점", 5: "5점"}
+    draft = assignment.draft_data or {}
 
     for q in questions:
         existing_ans = ReviewAnswer.objects.filter(assignment=assignment, question=q).first()
         existing_selected_ids = []
+
+        # 1) 제출된 답변이 있는 경우 우선 복원
         if existing_ans:
             existing_selected_ids = list(existing_ans.selected_options.values_list('id', flat=True))
+
+        # 2) 임시 저장(draft_data)에 전체 폼 데이터(RATING, TEXT, SINGLE, MULTI)가 있는 경우 복원 지원
+        draft_rating = draft.get(f'q_{q.id}_rating') or (existing_ans.rating_value if existing_ans else None)
+        draft_text = draft.get(f'q_{q.id}_text') if f'q_{q.id}_text' in draft else (existing_ans.answer_text if existing_ans else '')
+
+        draft_single = draft.get(f'q_{q.id}_single')
+        if draft_single:
+            draft_single = int(draft_single)
+        elif existing_selected_ids and q.question_type == 'SINGLE_CHOICE':
+            draft_single = existing_selected_ids[0]
+
+        draft_multi = draft.get(f'q_{q.id}_multi')
+        if draft_multi and isinstance(draft_multi, list):
+            draft_multi = [int(x) for x in draft_multi]
+        elif existing_selected_ids and q.question_type == 'MULTIPLE_CHOICE':
+            draft_multi = existing_selected_ids
 
         scale_options = []
         if q.question_type == 'RATING':
@@ -136,20 +154,24 @@ def review_form(request, assignment_id):
             'scale_options': scale_options,
             'existing_answer': existing_ans,
             'existing_selected': existing_selected_ids,
+            'draft_rating': int(draft_rating) if draft_rating else None,
+            'draft_text': draft_text,
+            'draft_single': draft_single,
+            'draft_multi': draft_multi or [],
         })
 
     return render(request, 'review/form.html', {
         'assignment': assignment,
         'cycle': cycle,
         'questions_data': questions_data,
-        'draft_data': assignment.draft_data or {},
+        'draft_data': draft,
         'is_editable': not cycle.is_deadline_passed,
         'is_locked': False,
     })
 
 
 def save_draft(request, assignment_id):
-    """작성 중인 폼 임시 저장 API (POST)"""
+    """전체 질문지에 대한 4가지 문항 타입(RATING, TEXT, SINGLE, MULTI) 통합 임시 저장 API (POST)"""
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Invalid HTTP Method'}, status=405)
 
@@ -160,14 +182,28 @@ def save_draft(request, assignment_id):
     assignment = get_object_or_404(ReviewAssignment, id=assignment_id, reviewer_id=member_id)
 
     try:
-        data = json.loads(request.body) if request.body else request.POST.dict()
-        assignment.draft_data = data
+        # 전체 폼 데이터 파싱 (JSON 또는 FormData 지원)
+        if request.content_type == 'application/json':
+            payload = json.loads(request.body) if request.body else {}
+        else:
+            payload = {}
+            for key in request.POST:
+                values = request.POST.getlist(key)
+                if len(values) > 1:
+                    payload[key] = values
+                else:
+                    payload[key] = values[0]
+
+        # 전체 질문지에 대한 폼 데이터를 JSON으로 보존
+        assignment.draft_data = payload
         assignment.draft_saved_at = timezone.now()
         assignment.save()
+
         return JsonResponse({
             'status': 'success',
-            'message': '임시 저장되었습니다.',
-            'saved_at': assignment.draft_saved_at.strftime('%Y-%m-%d %H:%M:%S')
+            'message': '전체 질문지의 모든 답변이 성공적으로 임시 저장되었습니다.',
+            'saved_at': assignment.draft_saved_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'saved_fields_count': len(payload)
         })
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)

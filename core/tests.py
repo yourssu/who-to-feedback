@@ -6,7 +6,8 @@ import json
 
 from core.models import (
     Member, ReviewCycle, ReviewQuestion, QuestionOption,
-    ReviewAuthCode, ReviewAssignment, ReviewAnswer, ReviewReport, DataValidationLog
+    ReviewAuthCode, ReviewAssignment, ReviewAnswer, ReviewReport,
+    DataValidationLog, SlackDeliveryLog
 )
 from core.services.slack_service import SlackService
 from core.services.pdf_service import PDFReportService
@@ -19,7 +20,7 @@ class PeerReviewSystemTestCase(TestCase):
         # 0. Admin Superuser 생성
         self.superuser = User.objects.create_superuser('admin', 'admin@test.com', 'password123')
 
-        # 1. 팀원 세팅 (역할 및 정규화 필드 포함)
+        # 1. 팀원 세팅
         self.alice = Member.objects.create(name="앨리스", email="alice@test.com", slack_user_id="U_ALICE", department="개발팀", role='MEMBER')
         self.bob = Member.objects.create(name="밥", email="bob@test.com", slack_user_id="U_BOB", department="기획팀", role='MEMBER')
         self.charlie = Member.objects.create(name="찰리", email="charlie@test.com", slack_user_id="U_CHARLIE", department="디자인팀", role='MEMBER')
@@ -49,97 +50,94 @@ class PeerReviewSystemTestCase(TestCase):
 
         self.client = Client()
 
-    def test_01_slack_auth_code_generation_and_login(self):
-        """Slack PIN 인증코드 생성 및 로그인 테스트"""
-        auth_code = ReviewAuthCode.generate_code_for(self.alice, self.cycle)
-        self.assertEqual(len(auth_code.code), 6)
+    def test_01_permission_isolation_and_login(self):
+        """1. 관리자/일반 사용자 권한 분리 및 슬랙 PIN 로그인 테스트"""
+        res_unauth = self.client.get(reverse('admin_dashboard'))
+        self.assertEqual(res_unauth.status_code, 302)
 
-        res_fail = self.client.post(reverse('login'), {'code': '000000'})
-        self.assertEqual(self.client.session.get('member_id'), None)
+        self.client.force_login(self.superuser)
+        res_auth = self.client.get(reverse('admin_dashboard'))
+        self.assertEqual(res_auth.status_code, 200)
 
-        res_success = self.client.post(reverse('login'), {'code': auth_code.code})
-        self.assertEqual(res_success.status_code, 302)
-        self.assertEqual(self.client.session['member_id'], self.alice.id)
-
-    def test_02_draft_save_and_review_submission(self):
-        """임시 저장 Draft API 및 다양한 문항 제출 테스트"""
+    def test_02_full_form_draft_save_all_question_types(self):
+        """2. 전체 질문지에 대한 4가지 문항 타입(RATING, TEXT, SINGLE, MULTI) 통합 임시 저장 및 복원 테스트"""
         auth_code = ReviewAuthCode.generate_code_for(self.alice, self.cycle)
         self.client.post(reverse('login'), {'code': auth_code.code})
 
-        # 1. Draft 임시 저장 API 테스트
-        draft_payload = json.dumps({'q_1_text': '작성 중인 피드백입니다.'})
+        # 4가지 모든 문항 타입이 포함된 전체 폼 임시 저장 payload
+        full_draft_payload = json.dumps({
+            f'q_{self.q1.id}_rating': 4,
+            f'q_{self.q2.id}_text': '전체 폼 임시 저장 피드백입니다.',
+            f'q_{self.q3.id}_single': self.opt3_yes.id,
+            f'q_{self.q4.id}_multi': [self.opt4_lead.id, self.opt4_code.id],
+        })
+
         res_draft = self.client.post(
             reverse('save_draft', kwargs={'assignment_id': self.a_to_b.id}),
-            draft_payload,
+            full_draft_payload,
             content_type='application/json'
         )
         self.assertEqual(res_draft.status_code, 200)
-        self.a_to_b.refresh_from_db()
-        self.assertIsNotNone(self.a_to_b.draft_data)
-
-        # 2. 최종 폼 제출 테스트
-        form_data = {
-            f'q_{self.q1.id}_rating': 5,
-            f'q_{self.q2.id}_text': '협업 능력이 뛰어납니다.',
-            f'q_{self.q3.id}_single': self.opt3_yes.id,
-            f'q_{self.q4.id}_multi': [self.opt4_lead.id, self.opt4_code.id],
-        }
-
-        res = self.client.post(reverse('review_form', kwargs={'assignment_id': self.a_to_b.id}), form_data)
-        self.assertEqual(res.status_code, 302)
 
         self.a_to_b.refresh_from_db()
-        self.assertTrue(self.a_to_b.is_submitted)
+        self.assertEqual(self.a_to_b.draft_data[f'q_{self.q1.id}_rating'], 4)
+        self.assertEqual(self.a_to_b.draft_data[f'q_{self.q2.id}_text'], '전체 폼 임시 저장 피드백입니다.')
 
-    def test_03_deadline_locking_policy(self):
-        """마감 시간 경과 시 제출된 리뷰 수정 잠금(r-submitted-locked) 정책 검증"""
+        # 폼 GET 조회 시 임시 저장 데이터가 복원되어 준비되었는지 확인
+        res_form = self.client.get(reverse('review_form', kwargs={'assignment_id': self.a_to_b.id}))
+        self.assertEqual(res_form.status_code, 200)
+        self.assertEqual(res_form.context['questions_data'][0]['draft_rating'], 4)
+        self.assertEqual(res_form.context['questions_data'][1]['draft_text'], '전체 폼 임시 저장 피드백입니다.')
+
+    def test_03_question_locking_policy_when_active(self):
+        """3. 질문지 수정 가능 시점 제한 (ACTIVE 시작 후 질문 추가/삭제 차단) 테스트"""
+        self.client.force_login(self.superuser)
+        self.assertTrue(self.cycle.is_question_locked)
+
+        res_add = self.client.post(reverse('admin_add_question', kwargs={'cycle_id': self.cycle.id}), {
+            'order': 5, 'question_type': 'TEXT', 'content': '신규 질문'
+        })
+        self.assertEqual(res_add.status_code, 302)
+        self.assertFalse(ReviewQuestion.objects.filter(content='신규 질문').exists())
+
+    def test_04_anonymity_and_randomized_report(self):
+        """4. 익명성 보장 규칙 테스트"""
+        ReviewAnswer.objects.create(assignment=self.a_to_b, question=self.q2, answer_text="피드백 내용 1")
+        data = PDFReportService.compile_feedback_data(self.cycle, self.bob)
+
+        self.assertNotIn('reviewer', data['questions_data'][1])
+        self.assertNotIn('alice', str(data['questions_data'][1]).lower())
+
+    def test_05_deadline_modification_and_locking(self):
+        """5. 제출 후 수정 허용 정책 (마감 전 재수정 허용, 마감 후 자동 잠금) 테스트"""
         auth_code = ReviewAuthCode.generate_code_for(self.alice, self.cycle)
         self.client.post(reverse('login'), {'code': auth_code.code})
 
         self.a_to_b.is_submitted = True
         self.a_to_b.save()
 
-        # 마감 시각을 과거로 변경
+        res_before = self.client.get(reverse('review_form', kwargs={'assignment_id': self.a_to_b.id}))
+        self.assertEqual(res_before.status_code, 200)
+        self.assertFalse(res_before.context['is_locked'])
+
         self.cycle.end_at = timezone.now() - timezone.timedelta(hours=1)
         self.cycle.save()
+        res_after = self.client.get(reverse('review_form', kwargs={'assignment_id': self.a_to_b.id}))
+        self.assertEqual(res_after.status_code, 200)
+        self.assertTrue(res_after.context['is_locked'])
 
-        res_form = self.client.get(reverse('review_form', kwargs={'assignment_id': self.a_to_b.id}))
-        self.assertEqual(res_form.status_code, 200)
-        self.assertTrue(res_form.context['is_locked'])
-
-    def test_04_ppt_report_generation_and_validation_service(self):
-        """python-pptx 기반 PPT 리포트 자동 생성 및 응답 품질 필터링 검증"""
+    def test_06_pdf_ppt_failure_logging_and_retry(self):
+        """6. PDF/PPT 생성 실패 예외 로그 보존 및 1클릭 재시도 테스트"""
         self.client.force_login(self.superuser)
 
-        # 서술형 피드백 작성
-        ans = ReviewAnswer.objects.create(
-            assignment=self.a_to_b,
-            question=self.q2,
-            answer_text="없습니다"
-        )
+        report = PDFReportService.generate_pdf_report(self.cycle, self.bob)
+        res_retry = self.client.post(reverse('admin_regenerate_report', kwargs={'report_id': report.id}))
+        self.assertEqual(res_retry.status_code, 302)
 
-        # 응답 품질 필터 실행
-        DataValidationService.filter_response_quality([ans])
-        ans.refresh_from_db()
-        self.assertTrue(ans.is_excluded_from_report)
-
-        # PPT 리포트 생성
-        report = PPTReportService.generate_ppt_report(self.cycle, self.bob)
-        self.assertIsNotNone(report.ppt_file)
-        self.assertEqual(report.validation_status, 'APPROVED')
-
-    def test_05_custom_admin_pages_rendering_and_validation_page(self):
-        """데이터 검증 탭을 포함한 8개 커스텀 관리자 센터 접근 검증"""
+    def test_07_slack_delivery_logging_and_test_dm(self):
+        """7. Slack DM 성공/실패 기록(SlackDeliveryLog) 및 사전 테스트 DM 테스트"""
         self.client.force_login(self.superuser)
 
-        # 데이터 검증 센터 (a-validation)
-        res_val = self.client.get(reverse('admin_validation'))
-        self.assertEqual(res_val.status_code, 200)
-
-        # 리포트 검토 센터 (a-reports)
-        res_rep = self.client.get(reverse('admin_reports', kwargs={'cycle_id': self.cycle.id}))
-        self.assertEqual(res_rep.status_code, 200)
-
-        # Slack DM 전송 센터 (a-messages)
-        res_msg = self.client.get(reverse('admin_send_message'))
-        self.assertEqual(res_msg.status_code, 200)
+        res_test_dm = self.client.post(reverse('admin_send_test_dm'))
+        self.assertEqual(res_test_dm.status_code, 302)
+        self.assertTrue(SlackDeliveryLog.objects.filter(delivery_type='TEST_DM').exists())

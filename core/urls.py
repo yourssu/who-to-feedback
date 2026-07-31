@@ -22,13 +22,13 @@ urlpatterns = [
     path('admin-panel/members/add/', admin_views.admin_add_member, name='admin_add_member'),
     path('admin-panel/members/<int:member_id>/delete/', admin_views.admin_delete_member, name='admin_delete_member'),
 
-    # ⭐ PAGE 2: 데이터 검증 (a-validation)
+    # PAGE 2: 데이터 검증 (a-validation)
     path('admin-panel/validation/', admin_views.admin_validation, name='admin_validation'),
     path('admin-panel/cycles/<int:cycle_id>/validation/', admin_views.admin_validation, name='admin_validation_detail'),
     path('admin-panel/cycles/<int:cycle_id>/validation/upload/', admin_views.admin_upload_excel, name='admin_upload_excel'),
     path('admin-panel/validation/normalize/', admin_views.admin_apply_normalization, name='admin_apply_normalization'),
 
-    # PAGE 3: 질문지 제작
+    # PAGE 3: 질문지 제작 (ACTIVE 시작 후 잠금)
     path('admin-panel/cycles/<int:cycle_id>/questions/', admin_views.admin_questions, name='admin_questions'),
     path('admin-panel/cycles/<int:cycle_id>/questions/add/', admin_views.admin_add_question, name='admin_add_question'),
     path('admin-panel/questions/<int:question_id>/delete/', admin_views.admin_delete_question, name='admin_delete_question'),
@@ -47,11 +47,13 @@ urlpatterns = [
     path('admin-panel/cycles/<int:cycle_id>/reminder/', admin_views.admin_send_reminder_action, name='admin_send_reminder_action'),
     path('admin-panel/cycles/<int:cycle_id>/generate-reports/', admin_views.admin_generate_reports_action, name='admin_generate_reports_action'),
 
-    # ⭐ PAGE 6: HTML & PDF / PPT 결과 검토 및 승인 배포
+    # PAGE 6: HTML & PDF / PPT 결과 검토 및 1클릭 재시도
     path('admin-panel/cycles/<int:cycle_id>/reports/', admin_views.admin_reports, name='admin_reports'),
     path('admin-panel/reports/<int:report_id>/regenerate/', admin_views.admin_regenerate_report, name='admin_regenerate_report'),
     path('admin-panel/cycles/<int:cycle_id>/publish/', admin_views.admin_publish_reports_action, name='admin_publish_reports_action'),
 
-    # PAGE 7: Slack DM 메세지 전송
+    # PAGE 7: Slack DM 전송, 실패 재전송 & 사전 테스트 DM
     path('admin-panel/messages/send/', admin_views.admin_send_message, name='admin_send_message'),
+    path('admin-panel/messages/retry-failed/', admin_views.admin_retry_failed_messages, name='admin_retry_failed_messages'),
+    path('admin-panel/messages/send-test/', admin_views.admin_send_test_dm, name='admin_send_test_dm'),
 ]

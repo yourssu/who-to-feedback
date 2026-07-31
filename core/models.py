@@ -76,6 +76,11 @@ class ReviewCycle(models.Model):
     def is_deadline_passed(self):
         return timezone.now() > self.end_at
 
+    @property
+    def is_question_locked(self):
+        """피어리뷰가 시작(ACTIVE)되거나 완료된 이후에는 질문지 수정 불가"""
+        return self.status != 'DRAFT'
+
 
 class ReviewQuestion(models.Model):
     TYPE_CHOICES = [
@@ -203,11 +208,38 @@ class ReviewReport(models.Model):
 class DataValidationLog(models.Model):
     cycle = models.ForeignKey(ReviewCycle, on_delete=models.CASCADE, related_name='validation_logs', verbose_name="리뷰 회차")
     row_index = models.IntegerField(verbose_name="엑셀 행 번호")
-    issue_type = models.CharField(max_length=50, verbose_name="오류/검증 유형") # NAME_MISSING, DEPT_MISSING, RATING_MISSING, EMPTY_TEXT
+    issue_type = models.CharField(max_length=50, verbose_name="오류/검증 유형")
     current_value = models.TextField(blank=True, verbose_name="현재 입력 값")
     is_resolved = models.BooleanField(default=False, verbose_name="해결 여부")
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name="기록일시")
+    created_at = models.DateTimeField(default=timezone.now, verbose_name="기록일시")
 
     class Meta:
         verbose_name = "데이터 검증 로그"
         verbose_name_plural = "데이터 검증 로그 목록"
+
+
+class SlackDeliveryLog(models.Model):
+    DELIVERY_TYPE_CHOICES = [
+        ('AUTH_CODE', '인증 핀코드 DM'),
+        ('REMINDER', '미작성자 독촉 DM'),
+        ('REPORT', 'PDF 결과 리포트 DM'),
+        ('CUSTOM_MSG', '커스텀 알림 DM'),
+        ('TEST_DM', '테스트 DM'),
+    ]
+
+    cycle = models.ForeignKey(ReviewCycle, on_delete=models.CASCADE, related_name='delivery_logs', null=True, blank=True, verbose_name="리뷰 회차")
+    member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='delivery_logs', verbose_name="수신 팀원")
+    delivery_type = models.CharField(max_length=20, choices=DELIVERY_TYPE_CHOICES, verbose_name="발송 메시지 종류")
+    message_content = models.TextField(blank=True, verbose_name="메시지 내용")
+    is_success = models.BooleanField(default=False, verbose_name="성공 여부")
+    error_message = models.TextField(blank=True, verbose_name="실패 오류 메시지")
+    sent_at = models.DateTimeField(default=timezone.now, verbose_name="발송일시")
+
+    class Meta:
+        verbose_name = "Slack 발송 로그"
+        verbose_name_plural = "Slack 발송 로그 목록"
+        ordering = ['-sent_at']
+
+    def __str__(self):
+        status_str = "성공" if self.is_success else "실패"
+        return f"[{self.get_delivery_type_display()}] {self.member.name} - {status_str}"

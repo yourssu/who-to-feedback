@@ -8,7 +8,7 @@ import os
 
 from core.models import (
     Member, ReviewCycle, ReviewQuestion, QuestionOption,
-    ReviewAssignment, ReviewAuthCode, ReviewReport, DataValidationLog
+    ReviewAssignment, ReviewAuthCode, ReviewReport, DataValidationLog, SlackDeliveryLog
 )
 from core.services.slack_service import SlackService
 from core.services.pdf_service import PDFReportService
@@ -177,7 +177,7 @@ def admin_apply_normalization(request):
 
 
 # ==========================================
-# 3. PAGE 3: 질문지 제작 (a-questions)
+# 3. PAGE 3: 질문지 제작 (a-questions - 잠금 기능)
 # ==========================================
 @superuser_required
 def admin_questions(request, cycle_id):
@@ -195,6 +195,12 @@ def admin_questions(request, cycle_id):
 def admin_add_question(request, cycle_id):
     if request.method == 'POST':
         cycle = get_object_or_404(ReviewCycle, id=cycle_id)
+
+        # 질문지 수정 시점 제한: ACTIVE 시작 후 문항 변경 차단
+        if cycle.is_question_locked:
+            messages.error(request, "피어리뷰가 이미 시작(ACTIVE)되거나 완료된 상태에서는 질문 문항을 추가할 수 없습니다.")
+            return redirect('admin_questions', cycle_id=cycle_id)
+
         order = request.POST.get('order', 1)
         question_type = request.POST.get('question_type')
         scale_type = request.POST.get('scale_type', 'NUMERIC_5')
@@ -216,7 +222,13 @@ def admin_add_question(request, cycle_id):
 def admin_delete_question(request, question_id):
     if request.method == 'POST':
         question = get_object_or_404(ReviewQuestion, id=question_id)
-        cycle_id = question.cycle.id
+        cycle = question.cycle
+
+        if cycle.is_question_locked:
+            messages.error(request, "피어리뷰가 시작(ACTIVE)된 이후에는 질문 문항을 삭제할 수 없습니다.")
+            return redirect('admin_questions', cycle_id=cycle.id)
+
+        cycle_id = cycle.id
         question.delete()
         messages.info(request, "질문 문항이 삭제되었습니다.")
         return redirect('admin_questions', cycle_id=cycle_id)
@@ -228,6 +240,12 @@ def admin_delete_question(request, question_id):
 def admin_add_option(request, question_id):
     if request.method == 'POST':
         question = get_object_or_404(ReviewQuestion, id=question_id)
+        cycle = question.cycle
+
+        if cycle.is_question_locked:
+            messages.error(request, "피어리뷰가 시작(ACTIVE)된 이후에는 선택지를 추가할 수 없습니다.")
+            return redirect('admin_questions', cycle_id=cycle.id)
+
         option_text = request.POST.get('option_text')
         order = question.options.count() + 1
 
@@ -289,7 +307,7 @@ def admin_add_assignment(request, cycle_id):
                     if not auth_code.code:
                         auth_code = ReviewAuthCode.generate_code_for(reviewer, cycle)
                     slack = SlackService()
-                    slack.send_auth_code_dm(reviewer, auth_code.code)
+                    slack.send_auth_code_dm(reviewer, auth_code.code, cycle)
                     messages.info(request, f"진행 중인 회차이므로 '{reviewer.name}' 님에게 인증코드 Slack DM이 자동 발송되었습니다.")
             else:
                 messages.warning(request, "이미 존재하는 매칭입니다.")
@@ -390,7 +408,7 @@ def admin_start_cycle_action(request, cycle_id):
 
         for r in reviewers:
             auth_code = ReviewAuthCode.generate_code_for(r, cycle)
-            success, _ = slack.send_auth_code_dm(r, auth_code.code)
+            success, _ = slack.send_auth_code_dm(r, auth_code.code, cycle)
             if success:
                 sent_count += 1
 
@@ -412,7 +430,7 @@ def admin_send_reminder_action(request, cycle_id):
 
         for r in reviewers:
             unsubmitted_reviewees = [a.reviewee for a in unsubmitted if a.reviewer == r]
-            success, _ = slack.send_reminder_dm(r, unsubmitted_reviewees)
+            success, _ = slack.send_reminder_dm(r, unsubmitted_reviewees, cycle)
             if success:
                 sent_count += 1
                 cycle.assignments.filter(reviewer=r, is_submitted=False).update(last_reminded_at=timezone.now())
@@ -436,19 +454,18 @@ def admin_generate_reports_action(request, cycle_id):
         cycle.save()
         pdf_reports = PDFReportService.generate_all_reports_for_cycle(cycle)
 
-        # PPT 리포트도 함께 자동 생성
         reviewees = set(a.reviewee for a in cycle.assignments.all())
         for rev in reviewees:
             PPTReportService.generate_ppt_report(cycle, rev)
 
-        messages.success(request, f"총 {len(pdf_reports)}건의 PDF 및 PPT 리포트가 성공적으로 생성되었습니다! 검토 대시보드에서 확인해 주세요.")
+        messages.success(request, f"총 {len(pdf_reports)}건의 PDF 및 PPT 리포트가 성공적으로 생성되었습니다!")
         return redirect('admin_reports', cycle_id=cycle_id)
 
     return redirect('admin_status')
 
 
 # ==========================================
-# 6. ⭐ PAGE 6: 리포트 검토 & PPT/버전 관리 (a-reports)
+# 6. PAGE 6: 리포트 검토 & PPT/버전 관리 (a-reports)
 # ==========================================
 @superuser_required
 def admin_reports(request, cycle_id):
@@ -490,11 +507,12 @@ def admin_reports(request, cycle_id):
 
 @superuser_required
 def admin_regenerate_report(request, report_id):
+    """1클릭 PDF/PPT 실패 리포트 재시도"""
     if request.method == 'POST':
         report = get_object_or_404(ReviewReport, id=report_id)
         PDFReportService.generate_pdf_report(report.cycle, report.reviewee)
         PPTReportService.generate_ppt_report(report.cycle, report.reviewee)
-        messages.success(request, f"'{report.reviewee.name}' 님의 리포트(PDF/PPT)가 재생성 되었습니다.")
+        messages.success(request, f"'{report.reviewee.name}' 님의 리포트(PDF/PPT)가 재시도/재생성 되었습니다.")
         return redirect('admin_reports', cycle_id=report.cycle.id)
 
     return redirect('admin_dashboard')
@@ -514,7 +532,8 @@ def admin_publish_reports_action(request, cycle_id):
                 success, _ = slack.send_pdf_report_dm(
                     member=r.reviewee,
                     pdf_file_path=r.pdf_file.path,
-                    cycle_title=cycle.title
+                    cycle_title=cycle.title,
+                    cycle=cycle
                 )
                 if success:
                     r.is_sent = True
@@ -532,11 +551,12 @@ def admin_publish_reports_action(request, cycle_id):
 
 
 # ==========================================
-# 7. PAGE 7: Slack DM 전송 & 실패 재전송 (a-messages)
+# 7. PAGE 7: Slack DM 전송, 실패 재전송 & 테스트 DM (a-messages)
 # ==========================================
 @superuser_required
 def admin_send_message(request):
     members = Member.objects.all()
+    failed_logs = SlackDeliveryLog.objects.filter(is_success=False)
 
     if request.method == 'POST':
         recipient_type = request.POST.get('recipient_type')
@@ -551,20 +571,55 @@ def admin_send_message(request):
             target_members = Member.objects.filter(id=member_id)
 
         for m in target_members:
-            if slack.mock_mode:
-                print(f"[MOCK SLACK CUSTOM MESSAGE -> {m.name} ({m.slack_user_id})]: {message_text}")
+            success, _ = slack.send_custom_dm(m, message_text)
+            if success:
                 sent_count += 1
-            else:
-                try:
-                    slack.client.chat_postMessage(channel=m.slack_user_id, text=message_text)
-                    sent_count += 1
-                except Exception as e:
-                    pass
 
-        messages.success(request, f"총 {sent_count}명의 팀원에게 Slack DM 메시지를 성공적으로 전송했습니다!")
+        messages.success(request, f"총 {sent_count}명의 팀원에게 Slack DM 메시지를 전송했습니다!")
         return redirect('admin_send_message')
 
     return render(request, 'admin_custom/send_message.html', {
         'members': members,
+        'failed_logs': failed_logs,
         'active_menu': 'messages',
     })
+
+
+@superuser_required
+def admin_retry_failed_messages(request):
+    """실패한 Slack DM 건만 1클릭 전원 재발송"""
+    if request.method == 'POST':
+        failed_logs = SlackDeliveryLog.objects.filter(is_success=False)
+        slack = SlackService()
+        retried_count = 0
+
+        for log in failed_logs:
+            success, _ = slack.send_failed_reminders_retry(log.member, log.message_content)
+            if success:
+                log.is_success = True
+                log.save()
+                retried_count += 1
+
+        messages.success(request, f"실패했던 {retried_count}건의 Slack DM에 대해 재발송을 완료했습니다!")
+    return redirect('admin_send_message')
+
+
+@superuser_required
+def admin_send_test_dm(request):
+    """전체 발송 전 관리자 본인에게 테스트 DM 전송"""
+    if request.method == 'POST':
+        slack = SlackService()
+
+        # 현재 로그인한 관리자 Member 객체 찾기 (없으면 첫 번째 관리자)
+        admin_member = Member.objects.filter(email=request.user.email).first()
+        if not admin_member:
+            admin_member = Member.objects.filter(role='ADMIN').first() or Member.objects.first()
+
+        if admin_member:
+            success, _ = slack.send_test_dm(admin_member)
+            if success:
+                messages.success(request, f"관리자 '{admin_member.name}' 님의 Slack DM으로 테스트 메시지가 발송되었습니다!")
+            else:
+                messages.error(request, "테스트 DM 발송에 실패했습니다.")
+
+    return redirect('admin_send_message')
