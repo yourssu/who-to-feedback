@@ -70,9 +70,15 @@ class ReviewQuestion(models.Model):
         ('MULTIPLE_CHOICE', '객관식 다중 선택 (태그)'),
     ]
 
+    SCALE_CHOICES = [
+        ('NUMERIC_5', '숫자형 척도 (1점 ~ 5점)'),
+        ('TEXT_5', '텍스트 척도 (매우 아님 - 약간 아님 - 보통임 - 약간 그럼 - 매우 그럼)'),
+    ]
+
     cycle = models.ForeignKey(ReviewCycle, on_delete=models.CASCADE, related_name='questions', verbose_name="리뷰 회차")
     order = models.PositiveIntegerField(default=1, verbose_name="순서")
     question_type = models.CharField(max_length=20, choices=TYPE_CHOICES, verbose_name="문항 유형")
+    scale_type = models.CharField(max_length=20, choices=SCALE_CHOICES, default='NUMERIC_5', verbose_name="척도 라벨 유형")
     content = models.TextField(verbose_name="문항 내용/질문")
 
     class Meta:

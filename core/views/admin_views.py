@@ -2,6 +2,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.utils import timezone
 from django.db import IntegrityError
+from django.contrib.auth.decorators import user_passes_test
 
 from core.models import (
     Member, ReviewCycle, ReviewQuestion, QuestionOption,
@@ -11,17 +12,50 @@ from core.services.slack_service import SlackService
 from core.services.pdf_service import PDFReportService
 
 
+def superuser_required(view_func):
+    """superuser 계정으로 로그인한 관리자만 커스텀 관리자 페이지에 접근 가능"""
+    return user_passes_test(
+        lambda u: u.is_authenticated and u.is_superuser,
+        login_url='/admin/login/'
+    )(view_func)
+
+
 # ==========================================
 # 0. 관리자 메인 대시보드
 # ==========================================
+@superuser_required
 def admin_dashboard(request):
     cycles = ReviewCycle.objects.all()
+    cycles_data = []
+
+    for c in cycles:
+        unsubmitted_assignments = c.assignments.filter(is_submitted=False).select_related('reviewer', 'reviewee')
+        unsubmitted_map = {}
+        for a in unsubmitted_assignments:
+            if a.reviewer not in unsubmitted_map:
+                unsubmitted_map[a.reviewer] = []
+            unsubmitted_map[a.reviewer].append(a.reviewee)
+
+        unsubmitted_info = []
+        for reviewer, reviewees in unsubmitted_map.items():
+            unsubmitted_info.append({
+                'reviewer': reviewer,
+                'unsubmitted_reviewees': reviewees,
+            })
+
+        cycles_data.append({
+            'cycle': c,
+            'unsubmitted_info': unsubmitted_info,
+            'unsubmitted_reviewers_count': len(unsubmitted_map),
+        })
+
     return render(request, 'admin_custom/dashboard.html', {
-        'cycles': cycles,
+        'cycles_data': cycles_data,
         'active_menu': 'dashboard',
     })
 
 
+@superuser_required
 def admin_create_cycle(request):
     if request.method == 'POST':
         title = request.POST.get('title')
@@ -43,6 +77,7 @@ def admin_create_cycle(request):
 # ==========================================
 # 1. PAGE 1: 팀원 관리
 # ==========================================
+@superuser_required
 def admin_members(request):
     members = Member.objects.all()
     return render(request, 'admin_custom/members.html', {
@@ -51,6 +86,7 @@ def admin_members(request):
     })
 
 
+@superuser_required
 def admin_add_member(request):
     if request.method == 'POST':
         name = request.POST.get('name')
@@ -72,6 +108,7 @@ def admin_add_member(request):
     return redirect('admin_members')
 
 
+@superuser_required
 def admin_delete_member(request, member_id):
     if request.method == 'POST':
         member = get_object_or_404(Member, id=member_id)
@@ -85,6 +122,7 @@ def admin_delete_member(request, member_id):
 # ==========================================
 # 2. PAGE 2: 질문지 제작 페이지
 # ==========================================
+@superuser_required
 def admin_questions(request, cycle_id):
     cycle = get_object_or_404(ReviewCycle, id=cycle_id)
     questions = cycle.questions.all().order_by('order')
@@ -96,17 +134,20 @@ def admin_questions(request, cycle_id):
     })
 
 
+@superuser_required
 def admin_add_question(request, cycle_id):
     if request.method == 'POST':
         cycle = get_object_or_404(ReviewCycle, id=cycle_id)
         order = request.POST.get('order', 1)
         question_type = request.POST.get('question_type')
+        scale_type = request.POST.get('scale_type', 'NUMERIC_5')
         content = request.POST.get('content')
 
         ReviewQuestion.objects.create(
             cycle=cycle,
             order=order,
             question_type=question_type,
+            scale_type=scale_type,
             content=content
         )
         messages.success(request, "신규 질문 문항이 추가되었습니다.")
@@ -114,6 +155,7 @@ def admin_add_question(request, cycle_id):
     return redirect('admin_questions', cycle_id=cycle_id)
 
 
+@superuser_required
 def admin_delete_question(request, question_id):
     if request.method == 'POST':
         question = get_object_or_404(ReviewQuestion, id=question_id)
@@ -125,6 +167,7 @@ def admin_delete_question(request, question_id):
     return redirect('admin_dashboard')
 
 
+@superuser_required
 def admin_add_option(request, question_id):
     if request.method == 'POST':
         question = get_object_or_404(ReviewQuestion, id=question_id)
@@ -145,6 +188,7 @@ def admin_add_option(request, question_id):
 # ==========================================
 # 3. PAGE 3: 피어리뷰 매칭 페이지 (ACTIVE 진행 중 수정 지원)
 # ==========================================
+@superuser_required
 def admin_assignments(request, cycle_id):
     cycle = get_object_or_404(ReviewCycle, id=cycle_id)
     assignments = cycle.assignments.all().select_related('reviewer', 'reviewee')
@@ -160,11 +204,8 @@ def admin_assignments(request, cycle_id):
     })
 
 
+@superuser_required
 def admin_add_assignment(request, cycle_id):
-    """
-    매칭 추가
-    - ACTIVE 진행 중인 상태에서 신규 리뷰어 매칭이 추가되면 인증코드 Slack DM 자동 전송
-    """
     if request.method == 'POST':
         cycle = get_object_or_404(ReviewCycle, id=cycle_id)
         reviewer_id = request.POST.get('reviewer_id')
@@ -186,7 +227,6 @@ def admin_add_assignment(request, cycle_id):
             if created:
                 messages.success(request, f"'{reviewer.name} ➡️ {reviewee.name}' 매칭이 성공적으로 추가되었습니다.")
 
-                # 진행 중(ACTIVE) 상태라면 새로 추가된 리뷰어에게 인증코드 Slack DM 자동 전송
                 if cycle.status == 'ACTIVE':
                     auth_code, _ = ReviewAuthCode.objects.get_or_create(member=reviewer, cycle=cycle, is_used=False)
                     if not auth_code.code:
@@ -202,6 +242,7 @@ def admin_add_assignment(request, cycle_id):
     return redirect('admin_assignments', cycle_id=cycle_id)
 
 
+@superuser_required
 def admin_delete_assignment(request, assignment_id):
     if request.method == 'POST':
         assignment = get_object_or_404(ReviewAssignment, id=assignment_id)
@@ -214,8 +255,8 @@ def admin_delete_assignment(request, assignment_id):
     return redirect('admin_dashboard')
 
 
+@superuser_required
 def admin_auto_match(request, cycle_id):
-    """팀 전체 360도 매칭 일괄 생성"""
     if request.method == 'POST':
         cycle = get_object_or_404(ReviewCycle, id=cycle_id)
         members = Member.objects.all()
@@ -239,6 +280,7 @@ def admin_auto_match(request, cycle_id):
 # ==========================================
 # 4. PAGE 4: 피어리뷰 진행 상태 대시보드
 # ==========================================
+@superuser_required
 def admin_status(request):
     cycles = ReviewCycle.objects.all()
     latest_cycle = cycles.first()
@@ -252,6 +294,7 @@ def admin_status(request):
     })
 
 
+@superuser_required
 def admin_status_detail(request, cycle_id):
     cycle = get_object_or_404(ReviewCycle, id=cycle_id)
     reviewers = Member.objects.filter(given_reviews__cycle=cycle).distinct()
@@ -277,6 +320,7 @@ def admin_status_detail(request, cycle_id):
     })
 
 
+@superuser_required
 def admin_start_cycle_action(request, cycle_id):
     if request.method == 'POST':
         cycle = get_object_or_404(ReviewCycle, id=cycle_id)
@@ -299,6 +343,7 @@ def admin_start_cycle_action(request, cycle_id):
     return redirect('admin_status')
 
 
+@superuser_required
 def admin_send_reminder_action(request, cycle_id):
     if request.method == 'POST':
         cycle = get_object_or_404(ReviewCycle, id=cycle_id)
@@ -321,6 +366,7 @@ def admin_send_reminder_action(request, cycle_id):
     return redirect('admin_status')
 
 
+@superuser_required
 def admin_generate_reports_action(request, cycle_id):
     if request.method == 'POST':
         cycle = get_object_or_404(ReviewCycle, id=cycle_id)
@@ -341,6 +387,7 @@ def admin_generate_reports_action(request, cycle_id):
 # ==========================================
 # 5. PAGE 5: HTML & PDF 결과 검토 페이지
 # ==========================================
+@superuser_required
 def admin_reports(request, cycle_id):
     cycle = get_object_or_404(ReviewCycle, id=cycle_id)
 
@@ -370,6 +417,7 @@ def admin_reports(request, cycle_id):
     })
 
 
+@superuser_required
 def admin_publish_reports_action(request, cycle_id):
     if request.method == 'POST':
         cycle = get_object_or_404(ReviewCycle, id=cycle_id)
@@ -403,6 +451,7 @@ def admin_publish_reports_action(request, cycle_id):
 # ==========================================
 # 6. PAGE 6: 관리자 커스텀 Slack DM 메시지 전송
 # ==========================================
+@superuser_required
 def admin_send_message(request):
     members = Member.objects.all()
 

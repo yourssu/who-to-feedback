@@ -115,7 +115,7 @@
 
             {% if q.question_type == 'RATING' %}
                 <div style="text-align: center; padding: 15px 0;">
-                    <div class="rating-badge">평균 {{ q.avg_rating }}점 / 5.0점</div>
+                    <div class="rating-badge">{{ q.avg_rating_label }}</div>
                     <p style="font-size: 9.5pt; color: #6B7280; margin-top: 8px;">
                         (최저 {{ q.min_rating }}점 ~ 최고 {{ q.max_rating }}점)
                     </p>

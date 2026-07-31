@@ -114,15 +114,28 @@ def review_form(request, assignment_id):
 
     # GET 요청 시 기존 답변 데이터 렌더링 준비
     questions_data = []
+    text_5_labels = {1: "매우 아님", 2: "약간 아님", 3: "보통임", 4: "약간 그럼", 5: "매우 그럼"}
+    numeric_5_labels = {1: "1점", 2: "2점", 3: "3점", 4: "4점", 5: "5점"}
+
     for q in questions:
         existing_ans = ReviewAnswer.objects.filter(assignment=assignment, question=q).first()
         existing_selected_ids = []
         if existing_ans:
             existing_selected_ids = list(existing_ans.selected_options.values_list('id', flat=True))
 
+        scale_options = []
+        if q.question_type == 'RATING':
+            labels_dict = text_5_labels if q.scale_type == 'TEXT_5' else numeric_5_labels
+            for val in range(1, 6):
+                scale_options.append({
+                    'val': val,
+                    'label': labels_dict[val]
+                })
+
         questions_data.append({
             'question': q,
             'options': q.options.all().order_by('order'),
+            'scale_options': scale_options,
             'existing_answer': existing_ans,
             'existing_selected': existing_selected_ids,
         })

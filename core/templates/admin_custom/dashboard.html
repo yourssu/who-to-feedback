@@ -6,7 +6,7 @@
 <div class="card">
     <div style="display: flex; justify-content: space-between; align-items: center;">
         <div>
-            <h2 class="card-title">👋 관리자 센터에 오신 것을 환영합니다</h2>
+            <h2 class="card-title">👋 관리자 센터 대시보드</h2>
             <p class="card-subtitle">피어리뷰 회차 세팅, 팀원 관리, 질문지 제작, 매칭, 리마인더 및 PDF 검토 배포를 한 곳에서 관리하세요.</p>
         </div>
         <button onclick="document.getElementById('cycleModal').classList.add('open')" class="btn btn-primary">
@@ -16,39 +16,69 @@
 </div>
 
 <h3 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 1rem; color: var(--gray-700);">
-    📌 피어리뷰 회차 목록 (총 {{ cycles|length }}건)
+    📌 피어리뷰 회차 목록 (총 {{ cycles_data|length }}건)
 </h3>
 
 <div style="display: flex; flex-direction: column; gap: 1rem;">
-    {% for c in cycles %}
+    {% for item in cycles_data %}
         <div class="card" style="margin-bottom: 0;">
             <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                 <div>
-                    <h4 style="font-size: 1.2rem; font-weight: 700;">{{ c.title }}</h4>
+                    <h4 style="font-size: 1.2rem; font-weight: 700;">{{ item.cycle.title }}</h4>
                     <p style="font-size: 0.9rem; color: var(--gray-600); margin-top: 0.25rem;">
-                        📅 기간: {{ c.start_at|date:"Y-m-d H:i" }} ~ {{ c.end_at|date:"Y-m-d H:i" }}
+                        📅 기간: {{ item.cycle.start_at|date:"Y-m-d H:i" }} ~ {{ item.cycle.end_at|date:"Y-m-d H:i" }}
                     </p>
                 </div>
                 <div>
-                    <span class="badge {% if c.status == 'CLOSED' %}badge-success{% elif c.status == 'COMPLETED' %}badge-info{% elif c.status == 'ACTIVE' %}badge-warning{% else %}badge-info{% endif %}" style="font-size: 0.95rem; padding: 0.4rem 0.8rem;">
-                        {{ c.get_status_display }} (제출율: {{ c.completion_rate }}%)
+                    <span class="badge {% if item.cycle.status == 'CLOSED' %}badge-success{% elif item.cycle.status == 'COMPLETED' %}badge-info{% elif item.cycle.status == 'ACTIVE' %}badge-warning{% else %}badge-info{% endif %}" style="font-size: 0.95rem; padding: 0.4rem 0.8rem;">
+                        {{ item.cycle.get_status_display }} (제출율: {{ item.cycle.completion_rate }}%)
                     </span>
                 </div>
             </div>
 
+            <!-- 미작성 현황 노출 영역 -->
+            {% if item.cycle.status == 'ACTIVE' %}
+                <div style="margin-top: 1rem; padding: 0.85rem; background: #FFFBEB; border: 1px solid #FDE68A; border-radius: var(--radius-sm);">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong style="color: #92400E; font-size: 0.9rem;">
+                            ⚠️ 미작성자 현황 (총 {{ item.unsubmitted_reviewers_count }}명 미제출건 잔여)
+                        </strong>
+                        <a href="{% url 'admin_status_detail' cycle_id=item.cycle.id %}" style="font-size: 0.8rem; color: #B45309; text-decoration: underline;">
+                            자세히 보기 →
+                        </a>
+                    </div>
+                    {% if item.unsubmitted_info %}
+                        <div style="margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.85rem;">
+                            {% for info in item.unsubmitted_info %}
+                                <div style="color: #B45309;">
+                                    👤 <strong>{{ info.reviewer.name }}</strong> (미작성 대상: 
+                                    {% for r in info.unsubmitted_reviewees %}
+                                        {{ r.name }}{% if not forloop.last %}, {% endif %}
+                                    {% endfor %})
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div style="font-size: 0.85rem; color: var(--success); margin-top: 0.25rem;">
+                            🎉 전원 제출 완료되었습니다!
+                        </div>
+                    {% endif %}
+                </div>
+            {% endif %}
+
             <hr style="border: none; border-top: 1px solid var(--gray-200); margin: 1rem 0;">
 
             <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                <a href="{% url 'admin_questions' cycle_id=c.id %}" class="btn" style="background: var(--gray-100); color: var(--gray-700); font-size: 0.85rem; padding: 0.5rem 1rem;">
-                    📝 질문지 제작 ({{ c.questions.count }}개)
+                <a href="{% url 'admin_questions' cycle_id=item.cycle.id %}" class="btn" style="background: var(--gray-100); color: var(--gray-700); font-size: 0.85rem; padding: 0.5rem 1rem;">
+                    📝 질문지 제작 ({{ item.cycle.questions.count }}개)
                 </a>
-                <a href="{% url 'admin_assignments' cycle_id=c.id %}" class="btn" style="background: var(--gray-100); color: var(--gray-700); font-size: 0.85rem; padding: 0.5rem 1rem;">
-                    🔗 매칭 관리 ({{ c.assignments.count }}건)
+                <a href="{% url 'admin_assignments' cycle_id=item.cycle.id %}" class="btn" style="background: var(--gray-100); color: var(--gray-700); font-size: 0.85rem; padding: 0.5rem 1rem;">
+                    🔗 매칭 관리 ({{ item.cycle.assignments.count }}건)
                 </a>
-                <a href="{% url 'admin_status_detail' cycle_id=c.id %}" class="btn" style="background: var(--primary-light); color: var(--primary); font-size: 0.85rem; padding: 0.5rem 1rem;">
+                <a href="{% url 'admin_status_detail' cycle_id=item.cycle.id %}" class="btn" style="background: var(--primary-light); color: var(--primary); font-size: 0.85rem; padding: 0.5rem 1rem;">
                     🚀 진행 상태 & 리마인더
                 </a>
-                <a href="{% url 'admin_reports' cycle_id=c.id %}" class="btn" style="background: #E0E7FF; color: #3730A3; font-size: 0.85rem; padding: 0.5rem 1rem;">
+                <a href="{% url 'admin_reports' cycle_id=item.cycle.id %}" class="btn" style="background: #E0E7FF; color: #3730A3; font-size: 0.85rem; padding: 0.5rem 1rem;">
                     📄 HTML/PDF 검토 & 배포
                 </a>
             </div>

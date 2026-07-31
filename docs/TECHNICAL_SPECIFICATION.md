@@ -28,13 +28,13 @@
 ### 2.2 리뷰 작성 및 응답 저장 (`core/views/review_views.py`)
 - 관리자가 매칭한 리뷰어-리뷰이 쌍(`ReviewAssignment`) 단위로 응답을 작성합니다.
 - 문항 유형별 저장 방식:
-  - `RATING`: 1~5 정수값 저장 (`ReviewAnswer.rating_value`)
+  - `RATING`: 1~5 정수값 저장 및 척도 라벨 옵션 (`NUMERIC_5`: 1~5점 / `TEXT_5`: 매우 아님 ~ 매우 그럼) 지원
   - `TEXT`: 문자열 텍스트 저장 (`ReviewAnswer.answer_text`)
   - `SINGLE_CHOICE`: `QuestionOption` 객체 단일 매핑 (`ReviewAnswer.selected_options`)
   - `MULTIPLE_CHOICE`: `QuestionOption` 객체 다중 매핑 (`ReviewAnswer.selected_options`)
 
 ### 2.3 커스텀 관리자 웹 UI (`core/views/admin_views.py`)
-기존 Django Admin을 대체하는 6개의 전용 웹 페이지로 구성되어 있습니다.
+기존 Django Admin을 대체하는 6개의 전용 웹 페이지로 구성되어 있으며, 모든 페이지는 Django superuser 계정(`is_superuser=True`)으로 로그인되어야 접근 가능합니다(`@superuser_required`). 비인가 사용자 접근 시 `/admin/login/`으로 이동합니다.
 
 1. **메인 대시보드 (`/admin-panel/`)**: 등록된 리뷰 회차 목록, 회차별 진행률(%) 및 회차 생성
 2. **팀원 관리 (`/admin-panel/members/`)**: 사용자 데이터 등록(이름, 이메일, Slack User ID, 부서), 수정 및 삭제

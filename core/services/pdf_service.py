@@ -36,12 +36,22 @@ class PDFReportService:
             if q.question_type == 'RATING':
                 ratings = [a.rating_value for a in answers if a.rating_value is not None]
                 if ratings:
-                    q_info['avg_rating'] = round(sum(ratings) / len(ratings), 2)
+                    avg_val = round(sum(ratings) / len(ratings), 2)
+                    q_info['avg_rating'] = avg_val
                     q_info['max_rating'] = max(ratings)
                     q_info['min_rating'] = min(ratings)
                     q_info['ratings_list'] = ratings
+
+                    if q.scale_type == 'TEXT_5':
+                        text_5_map = {1: "매우 아님", 2: "약간 아님", 3: "보통임", 4: "약간 그럼", 5: "매우 그럼"}
+                        closest_val = int(round(avg_val))
+                        closest_val = max(1, min(5, closest_val))
+                        q_info['avg_rating_label'] = f"{text_5_map[closest_val]} ({avg_val}점)"
+                    else:
+                        q_info['avg_rating_label'] = f"평균 {avg_val}점 / 5.0점"
                 else:
                     q_info['avg_rating'] = 0
+                    q_info['avg_rating_label'] = "응답 없음"
                     q_info['ratings_list'] = []
 
             elif q.question_type == 'TEXT':

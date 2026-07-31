@@ -25,16 +25,16 @@
 
                 {% if item.question.question_type == 'RATING' %}
                     <div class="rating-scale">
-                        {% for val in rating_range %}
+                        {% for opt in item.scale_options %}
                             <div class="rating-option">
                                 <input type="radio" 
                                        name="q_{{ item.question.id }}_rating" 
-                                       id="q_{{ item.question.id }}_r_{{ val }}" 
-                                       value="{{ val }}" 
-                                       {% if item.existing_answer and item.existing_answer.rating_value == val %}checked{% endif %} 
+                                       id="q_{{ item.question.id }}_r_{{ opt.val }}" 
+                                       value="{{ opt.val }}" 
+                                       {% if item.existing_answer and item.existing_answer.rating_value == opt.val %}checked{% endif %} 
                                        required>
-                                <label for="q_{{ item.question.id }}_r_{{ val }}" class="rating-label">
-                                    {{ val }}점
+                                <label for="q_{{ item.question.id }}_r_{{ opt.val }}" class="rating-label" style="font-size: 0.9rem;">
+                                    {{ opt.label }}
                                 </label>
                             </div>
                         {% endfor %}

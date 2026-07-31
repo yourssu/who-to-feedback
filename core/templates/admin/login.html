@@ -1,0 +1,66 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>관리자 로그인 - Peer Review Admin</title>
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+</head>
+<body style="background: var(--gray-50); min-height: 100vh; display: flex; flex-direction: column; justify-content: center; align-size: 100%;">
+
+    <div style="max-width: 440px; margin: 0 auto; width: 100%; padding: 1rem;">
+        <div class="card" style="box-shadow: var(--shadow-lg); text-align: center; border-radius: var(--radius-md);">
+            <div style="font-size: 3rem; margin-bottom: 0.5rem;">⚙️</div>
+            <h2 class="card-title" style="color: var(--primary);">피어리뷰 관리자 로그인</h2>
+            <p class="card-subtitle" style="margin-bottom: 1.5rem;">
+                Django Superuser 계정 아이디와 비밀번호를 입력해 주세요.
+            </p>
+
+            {% if form.errors %}
+                <div class="alert alert-danger" style="text-align: left; font-size: 0.85rem; padding: 0.75rem 1rem;">
+                    아이디 또는 비밀번호가 올바르지 않습니다. 다시 확인해 주세요.
+                </div>
+            {% endif %}
+
+            <form method="POST" action="{{ app_path }}">
+                {% csrf_token %}
+
+                <div class="form-group" style="text-align: left;">
+                    <label for="id_username" class="form-label">관리자 아이디 (Username)</label>
+                    <input type="text" 
+                           name="username" 
+                           id="id_username" 
+                           class="form-control" 
+                           placeholder="superuser 아이디" 
+                           required 
+                           autofocus>
+                </div>
+
+                <div class="form-group" style="text-align: left; margin-bottom: 1.5rem;">
+                    <label for="id_password" class="form-label">비밀번호 (Password)</label>
+                    <input type="password" 
+                           name="password" 
+                           id="id_password" 
+                           class="form-control" 
+                           placeholder="••••••••" 
+                           required>
+                </div>
+
+                <input type="hidden" name="next" value="{{ next }}">
+
+                <button type="submit" class="btn btn-primary btn-block" style="padding: 0.85rem; font-size: 1rem;">
+                    🔐 관리자 센터 로그인
+                </button>
+            </form>
+        </div>
+
+        <div style="text-align: center; margin-top: 1.5rem;">
+            <a href="{% url 'login' %}" style="color: var(--gray-600); text-decoration: none; font-size: 0.9rem;">
+                ← 리뷰어 슬랙 PIN 인증 로그인으로 가기
+            </a>
+        </div>
+    </div>
+
+</body>
+</html>

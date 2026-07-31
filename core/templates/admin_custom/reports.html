@@ -65,7 +65,7 @@
                     <div style="margin-bottom: 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px dashed var(--gray-300);">
                         <strong style="font-size: 0.9rem; color: var(--dark);">Q{{ q_data.order }}. {{ q_data.content }}</strong>
                         {% if q_data.question_type == 'RATING' %}
-                            <span class="badge badge-info" style="margin-left: 0.5rem;">평균 {{ q_data.avg_rating }}점</span>
+                            <span class="badge badge-info" style="margin-left: 0.5rem;">{{ q_data.avg_rating_label }}</span>
                         {% elif q_data.question_type == 'TEXT' %}
                             <div style="margin-top: 0.3rem; font-size: 0.85rem; color: var(--gray-600);">
                                 {% for ans in q_data.text_answers %}

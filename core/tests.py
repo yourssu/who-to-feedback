@@ -1,6 +1,7 @@
 from django.test import TestCase, Client
 from django.utils import timezone
 from django.urls import reverse
+from django.contrib.auth.models import User
 
 from core.models import (
     Member, ReviewCycle, ReviewQuestion, QuestionOption,
@@ -12,6 +13,9 @@ from core.services.pdf_service import PDFReportService
 
 class PeerReviewSystemTestCase(TestCase):
     def setUp(self):
+        # 0. Admin Superuser 생성
+        self.superuser = User.objects.create_superuser('admin', 'admin@test.com', 'password123')
+
         # 1. 팀원 세팅
         self.alice = Member.objects.create(name="앨리스", email="alice@test.com", slack_user_id="U_ALICE", department="개발팀")
         self.bob = Member.objects.create(name="밥", email="bob@test.com", slack_user_id="U_BOB", department="기획팀")
@@ -81,6 +85,8 @@ class PeerReviewSystemTestCase(TestCase):
 
     def test_04_strict_completion_and_admin_review_gate(self):
         """100% 전원 작성 완료 전 마감 차단 및 작성 완료 후 관리자 PDF 검토/승인 배포 파이프라인 테스트"""
+        self.client.force_login(self.superuser)
+
         self.a_to_b.is_submitted = True
         self.a_to_b.save()
         self.a_to_c.is_submitted = True
@@ -99,7 +105,15 @@ class PeerReviewSystemTestCase(TestCase):
         self.assertEqual(self.cycle.status, 'CLOSED')
 
     def test_05_custom_admin_pages_rendering_and_crud(self):
-        """6개 전용 커스텀 관리자 웹 페이지 접근 및 CRUD 검증"""
+        """6개 전용 커스텀 관리자 웹 페이지 권한 제어 및 CRUD 검증"""
+        # 비로그인 상태일 때 관리자 페이지 접근 시 로그인 페이지로 302 리다이렉트
+        res_unauth = self.client.get(reverse('admin_members'))
+        self.assertEqual(res_unauth.status_code, 302)
+        self.assertIn('/admin/login/', res_unauth.url)
+
+        # Superuser 로그인 후 접근
+        self.client.force_login(self.superuser)
+
         # PAGE 1: 팀원 관리
         res = self.client.get(reverse('admin_members'))
         self.assertEqual(res.status_code, 200)
@@ -132,7 +146,8 @@ class PeerReviewSystemTestCase(TestCase):
 
     def test_06_active_cycle_matching_modification(self):
         """ACTIVE 진행 중 상태에서 매칭 추가/삭제 및 신규 리뷰어 핀코드 DM 자동 발송 검증"""
-        # 신규 팀원 데이비드 추가 후 Charlie -> David 매칭 추가 (ACTIVE 상태)
+        self.client.force_login(self.superuser)
+
         david = Member.objects.create(name="데이비드", email="david2@test.com", slack_user_id="U_DAVID2")
         
         res = self.client.post(reverse('admin_add_assignment', kwargs={'cycle_id': self.cycle.id}), {
@@ -141,21 +156,20 @@ class PeerReviewSystemTestCase(TestCase):
         })
         self.assertEqual(res.status_code, 302)
 
-        # 매칭이 정상 생성되었는지 검증
         new_assign = ReviewAssignment.objects.filter(cycle=self.cycle, reviewer=self.charlie, reviewee=david).first()
         self.assertIsNotNone(new_assign)
 
-        # 진행 중(ACTIVE) 상태이므로 Charlie에게 인증코드가 생성 및 DM 발송되었는지 검증
         auth_code = ReviewAuthCode.objects.filter(member=self.charlie, cycle=self.cycle).first()
         self.assertIsNotNone(auth_code)
 
-        # 매칭 삭제 검증
         res_del = self.client.post(reverse('admin_delete_assignment', kwargs={'assignment_id': new_assign.id}))
         self.assertEqual(res_del.status_code, 302)
         self.assertFalse(ReviewAssignment.objects.filter(id=new_assign.id).exists())
 
     def test_07_custom_slack_dm_message_sending(self):
         """PAGE 6: 관리자 커스텀 Slack DM 메시지 발송 검증"""
+        self.client.force_login(self.superuser)
+
         res_send = self.client.post(reverse('admin_send_message'), {
             'recipient_type': 'ALL',
             'message_text': '안녕하세요 전체 팀원 여러분, 피어리뷰 공지입니다.',

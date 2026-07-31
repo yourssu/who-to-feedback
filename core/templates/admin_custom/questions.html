@@ -76,13 +76,27 @@
             </div>
             <div class="form-group">
                 <label class="form-label">질문 유형</label>
-                <select name="question_type" class="form-control" required>
+                <select name="question_type" class="form-control" id="questionTypeSelect" onchange="toggleScaleTypeSelect()" required>
                     <option value="RATING">5점 척도 평가</option>
                     <option value="TEXT">서술형 주관식 텍스트</option>
                     <option value="SINGLE_CHOICE">객관식 단일 선택 (Radio)</option>
                     <option value="MULTIPLE_CHOICE">객관식 다중 선택 (Checkbox 태그)</option>
                 </select>
             </div>
+            <div class="form-group" id="scaleTypeGroup">
+                <label class="form-label">척도 라벨 옵션</label>
+                <select name="scale_type" class="form-control">
+                    <option value="NUMERIC_5">숫자 척도 (1점 ~ 5점)</option>
+                    <option value="TEXT_5">텍스트 척도 (매우 아님 - 약간 아님 - 보통임 - 약간 그럼 - 매우 그럼)</option>
+                </select>
+            </div>
+            <script>
+                function toggleScaleTypeSelect() {
+                    var qType = document.getElementById('questionTypeSelect').value;
+                    var group = document.getElementById('scaleTypeGroup');
+                    group.style.display = (qType === 'RATING') ? 'block' : 'none';
+                }
+            </script>
             <div class="form-group">
                 <label class="form-label">질문 내용</label>
                 <textarea name="content" rows="3" class="form-control" placeholder="예: 동료의 협업 태도와 소통 능력을 평가해 주세요." required></textarea>
