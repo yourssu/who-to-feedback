@@ -40,6 +40,9 @@ pip install -r requirements.txt
 
 ### 2. 마이그레이션 및 서버 실행
 ```bash
+# .env.example 파일 복사 및 환경 변수 설정
+cp .env.example .env
+
 python manage.py migrate
 python manage.py runserver
 ```
@@ -56,4 +59,5 @@ python manage.py test core
 
 ## 기술 문서
 
-시스템 구조 및 데이터 모델에 대한 상세 명세는 [docs/TECHNICAL_SPECIFICATION.md](docs/TECHNICAL_SPECIFICATION.md) 문서를 참고하시기 바랍니다.
+- **기술 명세서**: [docs/TECHNICAL_SPECIFICATION.md](docs/TECHNICAL_SPECIFICATION.md)
+- **Slack 연동 가이드**: [docs/SLACK_INTEGRATION_GUIDE.md](docs/SLACK_INTEGRATION_GUIDE.md)

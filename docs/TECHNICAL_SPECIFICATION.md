@@ -69,9 +69,10 @@
 
 ---
 
-## 4. CLI 커맨드 명세
+## 5. 실제 Slack App 연동 세팅 가이드
 
-- `python manage.py start_review_cycle --cycle-id=<id>`: 회차 상태를 `ACTIVE`로 변경하고 리뷰어에게 PIN 코드 DM 전송
-- `python manage.py send_reminders --cycle-id=<id>`: 미작성자에게 미작성 동료 목록을 포함한 독촉 DM 전송
-- `python manage.py generate_reports --cycle-id=<id>`: 제출 완료 검증 후 PDF 리포트 생성 및 회차 상태를 `COMPLETED`로 변경
-- `python manage.py publish_reports --cycle-id=<id>`: 생성된 PDF 리포트를 Slack DM으로 업로드하고 회차 상태를 `CLOSED`로 변경
+1. **Slack App 생성**: [https://api.slack.com/apps](https://api.slack.com/apps) 접속 후 `From scratch`로 앱 생성
+2. **Bot Token Scopes 4가지 부여**: `chat:write`, `files:write`, `im:write`, `users:read`
+3. **Bot Token 발급**: `Install to Workspace` 실행 후 `xoxb-` 토큰 복사
+4. **환경 변수 설정**: `export SLACK_BOT_TOKEN="xoxb-..."`, `export MOCK_SLACK_MODE="False"`
+5. **Slack Member ID 입력**: Slack 사용자 프로필에서 복사한 `U12345678` ID를 `/admin-panel/members/` 등록
