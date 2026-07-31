@@ -3,10 +3,26 @@
 {% block title %}매칭 관리 - {{ cycle.title }}{% endblock %}
 
 {% block admin_content %}
+<!-- 회차 세팅 단계 서브 네비게이션 탭바 -->
+<div style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 2px solid var(--gray-200); padding-bottom: 0.5rem;">
+    <a href="{% url 'admin_questions' cycle_id=cycle.id %}" class="btn" style="background: var(--gray-100); color: var(--gray-700); font-size: 0.9rem; padding: 0.5rem 1rem;">
+        1. 질문지 제작 ({{ cycle.questions.count }}개)
+    </a>
+    <a href="{% url 'admin_assignments' cycle_id=cycle.id %}" class="btn" style="background: var(--primary); color: #ffffff; font-size: 0.9rem; padding: 0.5rem 1rem;">
+        2. 리뷰어 매칭 ({{ assignments.count }}건)
+    </a>
+    <a href="{% url 'admin_status_detail' cycle_id=cycle.id %}" class="btn" style="background: var(--gray-100); color: var(--gray-700); font-size: 0.9rem; padding: 0.5rem 1rem;">
+        3. 진행 상태 & 시작 →
+    </a>
+    <a href="{% url 'admin_reports' cycle_id=cycle.id %}" class="btn" style="background: var(--gray-100); color: var(--gray-700); font-size: 0.9rem; padding: 0.5rem 1rem;">
+        4. 결과 검토 & 배포
+    </a>
+</div>
+
 <div class="card">
     <div style="display: flex; justify-content: space-between; align-items: center;">
         <div>
-            <h2 class="card-title">🔗 리뷰어 - 리뷰이 매칭 관리</h2>
+            <h2 class="card-title">🔗 STEP 2. 리뷰어 - 리뷰이 매칭 관리</h2>
             <p class="card-subtitle">{{ cycle.title }} (상태: <strong>{{ cycle.get_status_display }}</strong>)</p>
         </div>
         <div style="display: flex; gap: 0.5rem;">
@@ -78,6 +94,16 @@
         {% endfor %}
     </tbody>
 </table>
+
+<!-- 다음 단계 이동 하단 바 -->
+<div style="margin-top: 2rem; display: flex; justify-content: space-between; align-items: center;">
+    <a href="{% url 'admin_questions' cycle_id=cycle.id %}" class="btn" style="background: var(--gray-100); color: var(--gray-700);">
+        ← 이전 단계: 질문지 편집
+    </a>
+    <a href="{% url 'admin_status_detail' cycle_id=cycle.id %}" class="btn btn-primary" style="padding: 0.85rem 1.5rem; font-size: 1rem; background: var(--primary-hover);">
+        다음 단계: 진행 상태 & 시작하기 ➔
+    </a>
+</div>
 
 <!-- 매칭 추가 모달 (팀/부서 필터링 지원) -->
 <div id="assignmentModal" class="modal">
