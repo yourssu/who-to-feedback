@@ -3,13 +3,17 @@ from django.contrib import messages
 from django.utils import timezone
 from django.db import IntegrityError
 from django.contrib.auth.decorators import user_passes_test
+from django.http import JsonResponse, HttpResponse
+import os
 
 from core.models import (
     Member, ReviewCycle, ReviewQuestion, QuestionOption,
-    ReviewAssignment, ReviewAuthCode, ReviewReport
+    ReviewAssignment, ReviewAuthCode, ReviewReport, DataValidationLog
 )
 from core.services.slack_service import SlackService
 from core.services.pdf_service import PDFReportService
+from core.services.ppt_service import PPTReportService
+from core.services.validation_service import DataValidationService
 
 
 def superuser_required(view_func):
@@ -21,7 +25,7 @@ def superuser_required(view_func):
 
 
 # ==========================================
-# 0. 관리자 메인 대시보드
+# 0. 관리자 메인 대시보드 (a-overview)
 # ==========================================
 @superuser_required
 def admin_dashboard(request):
@@ -43,10 +47,15 @@ def admin_dashboard(request):
                 'unsubmitted_reviewees': reviewees,
             })
 
+        completed_reports_count = c.reports.filter(validation_status='APPROVED').count()
+        failed_reports_count = c.reports.filter(validation_status='FAILED').count()
+
         cycles_data.append({
             'cycle': c,
             'unsubmitted_info': unsubmitted_info,
             'unsubmitted_reviewers_count': len(unsubmitted_map),
+            'completed_reports_count': completed_reports_count,
+            'failed_reports_count': failed_reports_count,
         })
 
     return render(request, 'admin_custom/dashboard.html', {
@@ -75,7 +84,7 @@ def admin_create_cycle(request):
 
 
 # ==========================================
-# 1. PAGE 1: 팀원 관리
+# 1. PAGE 1: 팀원 관리 (a-members)
 # ==========================================
 @superuser_required
 def admin_members(request):
@@ -93,13 +102,15 @@ def admin_add_member(request):
         email = request.POST.get('email')
         slack_user_id = request.POST.get('slack_user_id')
         department = request.POST.get('department', '')
+        role = request.POST.get('role', 'MEMBER')
 
         try:
             member = Member.objects.create(
                 name=name,
                 email=email,
                 slack_user_id=slack_user_id,
-                department=department
+                department=department,
+                role=role
             )
             messages.success(request, f"팀원 '{member.name}' 님이 성공적으로 추가되었습니다!")
         except IntegrityError:
@@ -120,7 +131,53 @@ def admin_delete_member(request, member_id):
 
 
 # ==========================================
-# 2. PAGE 2: 질문지 제작 페이지
+# 2. ⭐ PAGE 2: 데이터 검증 (a-validation)
+# ==========================================
+@superuser_required
+def admin_validation(request, cycle_id=None):
+    if cycle_id:
+        cycle = get_object_or_404(ReviewCycle, id=cycle_id)
+    else:
+        cycle = ReviewCycle.objects.first()
+
+    logs = DataValidationLog.objects.filter(cycle=cycle) if cycle else []
+    suggestions = DataValidationService.get_normalization_suggestions(cycle) if cycle else []
+
+    return render(request, 'admin_custom/validation.html', {
+        'cycle': cycle,
+        'logs': logs,
+        'suggestions': suggestions,
+        'active_menu': 'validation',
+    })
+
+
+@superuser_required
+def admin_upload_excel(request, cycle_id):
+    if request.method == 'POST' and request.FILES.get('excel_file'):
+        cycle = get_object_or_404(ReviewCycle, id=cycle_id)
+        excel_file = request.FILES['excel_file']
+        logs = DataValidationService.validate_excel_data(excel_file, cycle)
+        messages.success(request, f"엑셀 파일 검증 완료! 총 {len(logs)}건의 검증 항목이 발견되었습니다.")
+    return redirect('admin_validation')
+
+
+@superuser_required
+def admin_apply_normalization(request):
+    if request.method == 'POST':
+        cycle_id = request.POST.get('cycle_id')
+        raw_names = request.POST.getlist('raw_names')
+        target_name = request.POST.get('target_name')
+
+        if raw_names and target_name:
+            cycle = get_object_or_404(ReviewCycle, id=cycle_id)
+            count = DataValidationService.apply_normalization(cycle, raw_names, target_name)
+            messages.success(request, f"총 {count}명의 이름이 '{target_name}'로 정규화 병합되었습니다!")
+
+    return redirect('admin_validation')
+
+
+# ==========================================
+# 3. PAGE 3: 질문지 제작 (a-questions)
 # ==========================================
 @superuser_required
 def admin_questions(request, cycle_id):
@@ -186,7 +243,7 @@ def admin_add_option(request, question_id):
 
 
 # ==========================================
-# 3. PAGE 3: 피어리뷰 매칭 페이지 (ACTIVE 진행 중 수정 지원)
+# 4. PAGE 4: 피어리뷰 매칭 (a-assignments)
 # ==========================================
 @superuser_required
 def admin_assignments(request, cycle_id):
@@ -278,7 +335,7 @@ def admin_auto_match(request, cycle_id):
 
 
 # ==========================================
-# 4. PAGE 4: 피어리뷰 진행 상태 대시보드
+# 5. PAGE 5: 피어리뷰 진행 상태 (a-status)
 # ==========================================
 @superuser_required
 def admin_status(request):
@@ -377,15 +434,21 @@ def admin_generate_reports_action(request, cycle_id):
 
         cycle.status = 'COMPLETED'
         cycle.save()
-        reports = PDFReportService.generate_all_reports_for_cycle(cycle)
-        messages.success(request, f"총 {len(reports)}건의 PDF 리포트가 성공적으로 생성되었습니다! 검토 대시보드에서 확인해 주세요.")
+        pdf_reports = PDFReportService.generate_all_reports_for_cycle(cycle)
+
+        # PPT 리포트도 함께 자동 생성
+        reviewees = set(a.reviewee for a in cycle.assignments.all())
+        for rev in reviewees:
+            PPTReportService.generate_ppt_report(cycle, rev)
+
+        messages.success(request, f"총 {len(pdf_reports)}건의 PDF 및 PPT 리포트가 성공적으로 생성되었습니다! 검토 대시보드에서 확인해 주세요.")
         return redirect('admin_reports', cycle_id=cycle_id)
 
     return redirect('admin_status')
 
 
 # ==========================================
-# 5. PAGE 5: HTML & PDF 결과 검토 페이지
+# 6. ⭐ PAGE 6: 리포트 검토 & PPT/버전 관리 (a-reports)
 # ==========================================
 @superuser_required
 def admin_reports(request, cycle_id):
@@ -393,6 +456,9 @@ def admin_reports(request, cycle_id):
 
     if cycle.is_all_submitted and not cycle.reports.exists():
         PDFReportService.generate_all_reports_for_cycle(cycle)
+        reviewees = set(a.reviewee for a in cycle.assignments.all())
+        for rev in reviewees:
+            PPTReportService.generate_ppt_report(cycle, rev)
         if cycle.status == 'ACTIVE':
             cycle.status = 'COMPLETED'
             cycle.save()
@@ -403,9 +469,14 @@ def admin_reports(request, cycle_id):
     for r in reports:
         preview_data = PDFReportService.compile_feedback_data(cycle, r.reviewee)
         reports_data.append({
+            'report_id': r.id,
             'reviewee': r.reviewee,
             'pdf_file': r.pdf_file,
+            'ppt_file': r.ppt_file,
             'is_sent': r.is_sent,
+            'validation_status': r.get_validation_status_display(),
+            'version': r.version,
+            'error_log': r.error_log,
             'created_at': r.created_at,
             'preview_data': preview_data,
         })
@@ -415,6 +486,18 @@ def admin_reports(request, cycle_id):
         'reports': reports_data,
         'active_menu': 'dashboard',
     })
+
+
+@superuser_required
+def admin_regenerate_report(request, report_id):
+    if request.method == 'POST':
+        report = get_object_or_404(ReviewReport, id=report_id)
+        PDFReportService.generate_pdf_report(report.cycle, report.reviewee)
+        PPTReportService.generate_ppt_report(report.cycle, report.reviewee)
+        messages.success(request, f"'{report.reviewee.name}' 님의 리포트(PDF/PPT)가 재생성 되었습니다.")
+        return redirect('admin_reports', cycle_id=report.cycle.id)
+
+    return redirect('admin_dashboard')
 
 
 @superuser_required
@@ -449,7 +532,7 @@ def admin_publish_reports_action(request, cycle_id):
 
 
 # ==========================================
-# 6. PAGE 6: 관리자 커스텀 Slack DM 메시지 전송
+# 7. PAGE 7: Slack DM 전송 & 실패 재전송 (a-messages)
 # ==========================================
 @superuser_required
 def admin_send_message(request):

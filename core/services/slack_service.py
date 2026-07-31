@@ -79,6 +79,22 @@ class SlackService:
             logger.error(f"Failed to send reminder DM to {reviewer.name}: {e.response['error']}")
             return False, e.response['error']
 
+    def send_failed_reminders_retry(self, member, text):
+        """실패한 독촉 알림에 대한 재시도 알림"""
+        print(f"\n================ [SLACK FAILED REMINDERS RETRY] ================")
+        print(f"To: {member.name} ({member.slack_user_id})")
+        print(f"Text: {text}")
+        print(f"===================================================\n")
+
+        if self.mock_mode:
+            return True, "Mock Retry DM Sent"
+
+        try:
+            self.client.chat_postMessage(channel=member.slack_user_id, text=text)
+            return True, "Retry DM Sent"
+        except Exception as e:
+            return False, str(e)
+
     def send_pdf_report_dm(self, member, pdf_file_path, cycle_title):
         """
         검토 완료된 피어리뷰 결과 PDF 리포트를 Reviewee Slack DM으로 업로드 및 전송

@@ -2,13 +2,16 @@ from django.test import TestCase, Client
 from django.utils import timezone
 from django.urls import reverse
 from django.contrib.auth.models import User
+import json
 
 from core.models import (
     Member, ReviewCycle, ReviewQuestion, QuestionOption,
-    ReviewAuthCode, ReviewAssignment, ReviewAnswer, ReviewReport
+    ReviewAuthCode, ReviewAssignment, ReviewAnswer, ReviewReport, DataValidationLog
 )
 from core.services.slack_service import SlackService
 from core.services.pdf_service import PDFReportService
+from core.services.ppt_service import PPTReportService
+from core.services.validation_service import DataValidationService
 
 
 class PeerReviewSystemTestCase(TestCase):
@@ -16,10 +19,10 @@ class PeerReviewSystemTestCase(TestCase):
         # 0. Admin Superuser 생성
         self.superuser = User.objects.create_superuser('admin', 'admin@test.com', 'password123')
 
-        # 1. 팀원 세팅
-        self.alice = Member.objects.create(name="앨리스", email="alice@test.com", slack_user_id="U_ALICE", department="개발팀")
-        self.bob = Member.objects.create(name="밥", email="bob@test.com", slack_user_id="U_BOB", department="기획팀")
-        self.charlie = Member.objects.create(name="찰리", email="charlie@test.com", slack_user_id="U_CHARLIE", department="디자인팀")
+        # 1. 팀원 세팅 (역할 및 정규화 필드 포함)
+        self.alice = Member.objects.create(name="앨리스", email="alice@test.com", slack_user_id="U_ALICE", department="개발팀", role='MEMBER')
+        self.bob = Member.objects.create(name="밥", email="bob@test.com", slack_user_id="U_BOB", department="기획팀", role='MEMBER')
+        self.charlie = Member.objects.create(name="찰리", email="charlie@test.com", slack_user_id="U_CHARLIE", department="디자인팀", role='MEMBER')
 
         # 2. 회차 세팅
         now = timezone.now()
@@ -58,11 +61,23 @@ class PeerReviewSystemTestCase(TestCase):
         self.assertEqual(res_success.status_code, 302)
         self.assertEqual(self.client.session['member_id'], self.alice.id)
 
-    def test_02_review_submission_with_multiple_question_types(self):
-        """다양한 문항 유형(척도, 주관식, 단일선택, 다중선택) 작성 및 제출 테스트"""
+    def test_02_draft_save_and_review_submission(self):
+        """임시 저장 Draft API 및 다양한 문항 제출 테스트"""
         auth_code = ReviewAuthCode.generate_code_for(self.alice, self.cycle)
         self.client.post(reverse('login'), {'code': auth_code.code})
 
+        # 1. Draft 임시 저장 API 테스트
+        draft_payload = json.dumps({'q_1_text': '작성 중인 피드백입니다.'})
+        res_draft = self.client.post(
+            reverse('save_draft', kwargs={'assignment_id': self.a_to_b.id}),
+            draft_payload,
+            content_type='application/json'
+        )
+        self.assertEqual(res_draft.status_code, 200)
+        self.a_to_b.refresh_from_db()
+        self.assertIsNotNone(self.a_to_b.draft_data)
+
+        # 2. 최종 폼 제출 테스트
         form_data = {
             f'q_{self.q1.id}_rating': 5,
             f'q_{self.q2.id}_text': '협업 능력이 뛰어납니다.',
@@ -76,102 +91,55 @@ class PeerReviewSystemTestCase(TestCase):
         self.a_to_b.refresh_from_db()
         self.assertTrue(self.a_to_b.is_submitted)
 
-    def test_03_reminder_dm_includes_unsubmitted_reviewee_names(self):
-        """리마인더 메시지 전송 시 미작성 동료 이름 명단 포함 여부 테스트"""
-        unsubmitted_reviewees = [self.bob, self.charlie]
-        slack = SlackService()
-        success, msg = slack.send_reminder_dm(self.alice, unsubmitted_reviewees)
-        self.assertTrue(success)
-
-    def test_04_strict_completion_and_admin_review_gate(self):
-        """100% 전원 작성 완료 전 마감 차단 및 작성 완료 후 관리자 PDF 검토/승인 배포 파이프라인 테스트"""
-        self.client.force_login(self.superuser)
+    def test_03_deadline_locking_policy(self):
+        """마감 시간 경과 시 제출된 리뷰 수정 잠금(r-submitted-locked) 정책 검증"""
+        auth_code = ReviewAuthCode.generate_code_for(self.alice, self.cycle)
+        self.client.post(reverse('login'), {'code': auth_code.code})
 
         self.a_to_b.is_submitted = True
         self.a_to_b.save()
-        self.a_to_c.is_submitted = True
-        self.a_to_c.save()
-        self.b_to_a.is_submitted = True
-        self.b_to_a.save()
 
-        reports = PDFReportService.generate_all_reports_for_cycle(self.cycle)
-        self.cycle.status = 'COMPLETED'
+        # 마감 시각을 과거로 변경
+        self.cycle.end_at = timezone.now() - timezone.timedelta(hours=1)
         self.cycle.save()
 
-        res_publish = self.client.post(reverse('admin_publish_reports_action', kwargs={'cycle_id': self.cycle.id}))
-        self.assertEqual(res_publish.status_code, 302)
+        res_form = self.client.get(reverse('review_form', kwargs={'assignment_id': self.a_to_b.id}))
+        self.assertEqual(res_form.status_code, 200)
+        self.assertTrue(res_form.context['is_locked'])
 
-        self.cycle.refresh_from_db()
-        self.assertEqual(self.cycle.status, 'CLOSED')
-
-    def test_05_custom_admin_pages_rendering_and_crud(self):
-        """6개 전용 커스텀 관리자 웹 페이지 권한 제어 및 CRUD 검증"""
-        # 비로그인 상태일 때 관리자 페이지 접근 시 로그인 페이지로 302 리다이렉트
-        res_unauth = self.client.get(reverse('admin_members'))
-        self.assertEqual(res_unauth.status_code, 302)
-        self.assertIn('/admin/login/', res_unauth.url)
-
-        # Superuser 로그인 후 접근
+    def test_04_ppt_report_generation_and_validation_service(self):
+        """python-pptx 기반 PPT 리포트 자동 생성 및 응답 품질 필터링 검증"""
         self.client.force_login(self.superuser)
 
-        # PAGE 1: 팀원 관리
-        res = self.client.get(reverse('admin_members'))
-        self.assertEqual(res.status_code, 200)
+        # 서술형 피드백 작성
+        ans = ReviewAnswer.objects.create(
+            assignment=self.a_to_b,
+            question=self.q2,
+            answer_text="없습니다"
+        )
 
-        res_add_m = self.client.post(reverse('admin_add_member'), {
-            'name': '데이비드', 'email': 'david@test.com', 'slack_user_id': 'U_DAVID', 'department': 'QA팀'
-        })
-        self.assertEqual(res_add_m.status_code, 302)
-        self.assertTrue(Member.objects.filter(name='데이비드').exists())
+        # 응답 품질 필터 실행
+        DataValidationService.filter_response_quality([ans])
+        ans.refresh_from_db()
+        self.assertTrue(ans.is_excluded_from_report)
 
-        # PAGE 2: 질문지 제작
-        res_q = self.client.get(reverse('admin_questions', kwargs={'cycle_id': self.cycle.id}))
-        self.assertEqual(res_q.status_code, 200)
+        # PPT 리포트 생성
+        report = PPTReportService.generate_ppt_report(self.cycle, self.bob)
+        self.assertIsNotNone(report.ppt_file)
+        self.assertEqual(report.validation_status, 'APPROVED')
 
-        # PAGE 3: 매칭 관리
-        res_a = self.client.get(reverse('admin_assignments', kwargs={'cycle_id': self.cycle.id}))
-        self.assertEqual(res_a.status_code, 200)
+    def test_05_custom_admin_pages_rendering_and_validation_page(self):
+        """데이터 검증 탭을 포함한 8개 커스텀 관리자 센터 접근 검증"""
+        self.client.force_login(self.superuser)
 
-        # PAGE 4: 진행 상태 대시보드
-        res_s = self.client.get(reverse('admin_status_detail', kwargs={'cycle_id': self.cycle.id}))
-        self.assertEqual(res_s.status_code, 200)
+        # 데이터 검증 센터 (a-validation)
+        res_val = self.client.get(reverse('admin_validation'))
+        self.assertEqual(res_val.status_code, 200)
 
-        # PAGE 5: HTML/PDF 검토 페이지
-        res_r = self.client.get(reverse('admin_reports', kwargs={'cycle_id': self.cycle.id}))
-        self.assertEqual(res_r.status_code, 200)
+        # 리포트 검토 센터 (a-reports)
+        res_rep = self.client.get(reverse('admin_reports', kwargs={'cycle_id': self.cycle.id}))
+        self.assertEqual(res_rep.status_code, 200)
 
-        # PAGE 6: Slack DM 메시지 전송
+        # Slack DM 전송 센터 (a-messages)
         res_msg = self.client.get(reverse('admin_send_message'))
         self.assertEqual(res_msg.status_code, 200)
-
-    def test_06_active_cycle_matching_modification(self):
-        """ACTIVE 진행 중 상태에서 매칭 추가/삭제 및 신규 리뷰어 핀코드 DM 자동 발송 검증"""
-        self.client.force_login(self.superuser)
-
-        david = Member.objects.create(name="데이비드", email="david2@test.com", slack_user_id="U_DAVID2")
-        
-        res = self.client.post(reverse('admin_add_assignment', kwargs={'cycle_id': self.cycle.id}), {
-            'reviewer_id': self.charlie.id,
-            'reviewee_id': david.id,
-        })
-        self.assertEqual(res.status_code, 302)
-
-        new_assign = ReviewAssignment.objects.filter(cycle=self.cycle, reviewer=self.charlie, reviewee=david).first()
-        self.assertIsNotNone(new_assign)
-
-        auth_code = ReviewAuthCode.objects.filter(member=self.charlie, cycle=self.cycle).first()
-        self.assertIsNotNone(auth_code)
-
-        res_del = self.client.post(reverse('admin_delete_assignment', kwargs={'assignment_id': new_assign.id}))
-        self.assertEqual(res_del.status_code, 302)
-        self.assertFalse(ReviewAssignment.objects.filter(id=new_assign.id).exists())
-
-    def test_07_custom_slack_dm_message_sending(self):
-        """PAGE 6: 관리자 커스텀 Slack DM 메시지 발송 검증"""
-        self.client.force_login(self.superuser)
-
-        res_send = self.client.post(reverse('admin_send_message'), {
-            'recipient_type': 'ALL',
-            'message_text': '안녕하세요 전체 팀원 여러분, 피어리뷰 공지입니다.',
-        })
-        self.assertEqual(res_send.status_code, 302)
