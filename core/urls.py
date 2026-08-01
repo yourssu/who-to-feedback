@@ -50,6 +50,8 @@ urlpatterns = [
 
     # PAGE 6: HTML & PDF / PPT 결과 검토 및 1클릭 개별 재생성, 메모, 레이아웃 검수, 샘플 모드
     path('admin-panel/cycles/<int:cycle_id>/reports/', admin_views.admin_reports, name='admin_reports'),
+    path('admin-panel/cycles/<int:cycle_id>/upload-template/', admin_views.admin_upload_custom_template, name='admin_upload_custom_template'),
+    path('admin-panel/cycles/<int:cycle_id>/toggle-template/', admin_views.admin_toggle_custom_template, name='admin_toggle_custom_template'),
     path('admin-panel/reports/<int:report_id>/regenerate/', admin_views.admin_regenerate_report, name='admin_regenerate_report'),
     path('admin-panel/reports/<int:report_id>/memo/', admin_views.admin_save_report_memo, name='admin_save_report_memo'),
     path('admin-panel/cycles/<int:cycle_id>/sample-reports/', admin_views.admin_generate_sample_reports, name='admin_generate_sample_reports'),

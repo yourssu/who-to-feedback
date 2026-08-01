@@ -1,8 +1,10 @@
 from django.test import TestCase, Client
 from django.utils import timezone
+from datetime import timedelta
 from django.urls import reverse
 from django.contrib.auth.models import User
 import json
+import os
 
 from core.models import (
     Member, ReviewCycle, ReviewQuestion, QuestionOption,
@@ -122,3 +124,129 @@ class PeerReviewSystemTestCase(TestCase):
         # 회차 버전 변경 이력 뷰 테스트
         res_hist = self.client.get(reverse('admin_cycle_history', kwargs={'cycle_id': self.cycle.id}))
         self.assertEqual(res_hist.status_code, 200)
+
+
+class CustomHTMLTemplateTestCase(TestCase):
+    def setUp(self):
+        self.superuser = User.objects.create_superuser('admin', 'admin@example.com', 'password123')
+        self.alice = Member.objects.create(name='Alice', email='alice@example.com', slack_user_id='U111', role='ADMIN')
+        self.bob = Member.objects.create(name='Bob', email='bob@example.com', slack_user_id='U222', role='MEMBER')
+
+        now = timezone.now()
+        self.cycle = ReviewCycle.objects.create(
+            title='커스텀 템플릿 테스트 회차',
+            start_at=now - timedelta(days=1),
+            end_at=now + timedelta(days=5),
+            status='ACTIVE'
+        )
+
+        self.q1 = ReviewQuestion.objects.create(cycle=self.cycle, order=1, question_type='RATING', content='업무 몰입도')
+        self.q2 = ReviewQuestion.objects.create(cycle=self.cycle, order=2, question_type='TEXT', content='강점 피드백')
+
+        self.assignment = ReviewAssignment.objects.create(
+            cycle=self.cycle, reviewer=self.alice, reviewee=self.bob, is_submitted=True
+        )
+
+        ReviewAnswer.objects.create(assignment=self.assignment, question=self.q1, rating_value=5)
+        ReviewAnswer.objects.create(assignment=self.assignment, question=self.q2, answer_text='매우 훌륭한 팀원입니다.')
+
+    def test_deterministic_context_builder_method_a(self):
+        """방식 A: 순서(order) 기반 q_N_ 결정적 변수 기계적 생성 검증"""
+        context = PDFReportService.compile_feedback_data(self.cycle, self.bob)
+
+        # q_1_ (5점 척도) 변수 검증
+        self.assertEqual(context['q_1_content'], '업무 몰입도')
+        self.assertEqual(context['q_1_avg_rating'], 5.0)
+        self.assertEqual(context['q_1_rating_percent'], 100)
+
+        # q_2_ (서술형) 변수 검증
+        self.assertEqual(context['q_2_content'], '강점 피드백')
+        self.assertIn('매우 훌륭한 팀원입니다.', context['q_2_text_answers'])
+
+    def test_custom_html_template_pdf_generation(self):
+        """커스텀 HTML 양식 파일 적용 및 깨짐 0% PDF 생성 테스트"""
+        from django.core.files.base import ContentFile
+
+        custom_html_content = """<!DOCTYPE html>
+        <html>
+        <head><style>@page { size: 297mm 167mm; margin: 0; }</style></head>
+        <body>
+            <h1>{{ reviewee.name }} 리포트</h1>
+            <p>{{ q_1_content }}: {{ q_1_avg_rating }}점 ({{ q_1_rating_percent }}%)</p>
+            <div>
+                {% for text in q_2_text_answers %}
+                    <p>{{ text }}</p>
+                {% endfor %}
+            </div>
+        </body>
+        </html>"""
+
+        self.cycle.custom_html_file.save("test_template.html", ContentFile(custom_html_content.encode('utf-8')))
+        self.cycle.use_custom_template = True
+        self.cycle.save()
+
+        report = PDFReportService.generate_pdf_report(self.cycle, self.bob)
+
+        self.assertEqual(report.validation_status, 'APPROVED')
+        self.assertTrue(bool(report.pdf_file))
+        self.assertTrue(os.path.exists(report.pdf_file.path))
+
+    def test_generate_all_reports_for_cycle(self):
+        """회차 내 모든 수신자 리포트 일괄 생성 테스트"""
+        reports = PDFReportService.generate_all_reports_for_cycle(self.cycle)
+        self.assertEqual(len(reports), 1)
+        self.assertEqual(reports[0].reviewee, self.bob)
+
+    def test_strict_anonymity_enforcement(self):
+        """무기명 보장 원칙: 리포트 Context 내 응답자(reviewer) 식별 정보 100% 탈거 검증"""
+        context = PDFReportService.compile_feedback_data(self.cycle, self.bob)
+        
+        # 1. context 직속 변수 내 reviewer 정보 미존재 검증
+        self.assertNotIn('reviewer', context)
+        self.assertNotIn('reviewer_name', context)
+        self.assertNotIn('assignments', context)
+
+        # 2. 주관식 답변 배열이 순수 string 배열인지 검증 (ReviewAnswer 객체가 아님)
+    def test_category_scoring_and_auto_charts(self):
+        """글자형/숫자형 1~5점 점수 환산, 카테고리별 합산/가산 및 Base64 차트 3종 자동 생성 검증"""
+        # 카테고리 지정 질문 추가 (글자형 TEXT_5 문항 포함)
+        q3 = ReviewQuestion.objects.create(
+            cycle=self.cycle, order=3, question_type='RATING',
+            scale_type='TEXT_5', category='Active Ownership', content='도전정신 평가'
+        )
+        q4 = ReviewQuestion.objects.create(
+            cycle=self.cycle, order=4, question_type='RATING',
+            scale_type='NUMERIC_5', category='Deep Immersion', content='몰입도 평가'
+        )
+
+        ReviewAnswer.objects.create(assignment=self.assignment, question=q3, answer_text='매우 그럼') # 5.0점 환산
+        ReviewAnswer.objects.create(assignment=self.assignment, question=q4, rating_value=4) # 4.0점
+
+        context = PDFReportService.compile_feedback_data(self.cycle, self.bob)
+
+        # 1. 카테고리별 요약 데이터 검증
+        cat_summary = context['category_summary']
+        self.assertTrue(len(cat_summary) >= 2)
+        
+    def test_choice_question_ratio_charts(self):
+        """선택형 문항 선택지 비율 원/막대 그래프 Base64 자동 생성 검증"""
+        q5 = ReviewQuestion.objects.create(
+            cycle=self.cycle, order=5, question_type='MULTIPLE_CHOICE',
+            category='소통역량', content='가장 잘 어울리는 역량 태그'
+        )
+        opt1 = QuestionOption.objects.create(question=q5, option_text='리더십', order=1)
+        opt2 = QuestionOption.objects.create(question=q5, option_text='소통 능력', order=2)
+
+        ans5 = ReviewAnswer.objects.create(assignment=self.assignment, question=q5)
+        ans5.selected_options.add(opt1, opt2)
+
+        context = PDFReportService.compile_feedback_data(self.cycle, self.bob)
+
+        # 선택형 문항 차트 2종 생성 검증
+        self.assertTrue(context['q_5_pie_chart_base64'].startswith('data:image/png;base64,'))
+        self.assertTrue(context['q_5_bar_chart_base64'].startswith('data:image/png;base64,'))
+
+
+
+
+

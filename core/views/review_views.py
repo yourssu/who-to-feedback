@@ -24,28 +24,36 @@ def review_dashboard(request):
             'reviewer': reviewer,
             'cycle': None,
             'assignments': [],
+            'completed_count': 0,
+            'is_completed': False,
             'completion_rate': 0,
         })
 
-    assignments = ReviewAssignment.objects.filter(cycle=cycle, reviewer=reviewer).select_related('reviewee')
-    total_count = assignments.count()
-    submitted_count = assignments.filter(is_submitted=True).count()
-    completion_rate = int((submitted_count / total_count * 100)) if total_count > 0 else 0
-    is_all_completed = (total_count > 0 and submitted_count == total_count)
+    raw_assignments = ReviewAssignment.objects.filter(cycle=cycle, reviewer=reviewer).select_related('reviewee')
+    total_count = raw_assignments.count()
+    completed_count = raw_assignments.filter(is_submitted=True).count()
+    completion_rate = int((completed_count / total_count * 100)) if total_count > 0 else 0
+    is_completed = (total_count > 0 and completed_count == total_count)
 
     days_left = (cycle.end_at - timezone.now()).days if cycle.end_at > timezone.now() else 0
+
+    # 템플릿 (dashboard.html) 호환용 딕셔너리 래핑: item.assignment.id, item.assignment.reviewee
+    assignments = [{'assignment': a} for a in raw_assignments]
 
     return render(request, 'review/dashboard.html', {
         'reviewer': reviewer,
         'cycle': cycle,
         'assignments': assignments,
         'total_count': total_count,
-        'submitted_count': submitted_count,
+        'completed_count': completed_count,
+        'submitted_count': completed_count,
         'completion_rate': completion_rate,
-        'is_all_completed': is_all_completed,
+        'is_completed': is_completed,
+        'is_all_completed': is_completed,
         'days_left': days_left,
         'is_deadline_passed': cycle.is_deadline_passed,
     })
+
 
 
 def review_form(request, assignment_id):

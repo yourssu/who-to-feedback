@@ -42,6 +42,8 @@ class ReviewCycle(models.Model):
     auto_reminder_enabled = models.BooleanField(default=True, verbose_name="자동 리마인더 활성화")
     auto_reminder_time = models.TimeField(default="10:00", verbose_name="자동 리마인더 시각")
     version = models.CharField(max_length=10, default="v1", verbose_name="템플릿/문항 버전")
+    custom_html_file = models.FileField(upload_to='custom_templates/', null=True, blank=True, verbose_name="커스텀 HTML 결과지 템플릿 파일")
+    use_custom_template = models.BooleanField(default=False, verbose_name="커스텀 HTML 템플릿 적용 여부")
     created_at = models.DateTimeField(default=timezone.now, verbose_name="생성일시")
 
     class Meta:
@@ -111,6 +113,7 @@ class ReviewQuestion(models.Model):
     order = models.PositiveIntegerField(default=1, verbose_name="순서")
     question_type = models.CharField(max_length=20, choices=TYPE_CHOICES, verbose_name="문항 유형")
     scale_type = models.CharField(max_length=20, choices=SCALE_CHOICES, default='NUMERIC_5', verbose_name="척도 라벨 유형")
+    category = models.CharField(max_length=100, blank=True, default="기본 역량", verbose_name="관리자 전용 카테고리 (예: Active Ownership)")
     content = models.TextField(verbose_name="문항 내용/질문")
 
     class Meta:

@@ -212,6 +212,7 @@ def admin_add_question(request, cycle_id):
         order = request.POST.get('order', 1)
         question_type = request.POST.get('question_type')
         scale_type = request.POST.get('scale_type', 'NUMERIC_5')
+        category = request.POST.get('category', '기본 역량').strip() or '기본 역량'
         content = request.POST.get('content')
 
         ReviewQuestion.objects.create(
@@ -219,9 +220,10 @@ def admin_add_question(request, cycle_id):
             order=order,
             question_type=question_type,
             scale_type=scale_type,
+            category=category,
             content=content
         )
-        messages.success(request, "신규 질문 문항이 추가되었습니다.")
+        messages.success(request, f"신규 질문 문항이 추가되었습니다. (카테고리: {category})")
 
     return redirect('admin_questions', cycle_id=cycle_id)
 
@@ -706,3 +708,37 @@ def admin_send_test_dm(request):
                 messages.error(request, "테스트 DM 발송에 실패했습니다.")
 
     return redirect('admin_send_message')
+
+
+@superuser_required
+def admin_upload_custom_template(request, cycle_id):
+    """커스텀 HTML 결과지 양식 파일 업로드 처리"""
+    cycle = get_object_or_404(ReviewCycle, id=cycle_id)
+    if request.method == 'POST' and request.FILES.get('html_file'):
+        html_file = request.FILES['html_file']
+        if not html_file.name.lower().endswith(('.html', '.htm')):
+            messages.error(request, "올바른 HTML 파일(.html, .htm)을 업로드해 주세요.")
+            return redirect('admin_reports', cycle_id=cycle.id)
+
+        cycle.custom_html_file = html_file
+        cycle.use_custom_template = True
+        cycle.save()
+        messages.success(request, f"커스텀 HTML 양식 파일 '{html_file.name}'이 성공적으로 업로드 및 적용되었습니다.")
+    return redirect('admin_reports', cycle_id=cycle.id)
+
+
+@superuser_required
+def admin_toggle_custom_template(request, cycle_id):
+    """커스텀 HTML 양식 템플릿 사용 여부 토글"""
+    cycle = get_object_or_404(ReviewCycle, id=cycle_id)
+    if request.method == 'POST':
+        if not cycle.custom_html_file:
+            messages.error(request, "업로드된 커스텀 HTML 양식이 없습니다. 먼저 HTML 파일을 업로드해 주세요.")
+            return redirect('admin_reports', cycle_id=cycle.id)
+
+        cycle.use_custom_template = not cycle.use_custom_template
+        cycle.save()
+        status_str = "적용" if cycle.use_custom_template else "해제"
+        messages.success(request, f"커스텀 HTML 양식 템플릿 사용이 [{status_str}] 되었습니다.")
+    return redirect('admin_reports', cycle_id=cycle.id)
+

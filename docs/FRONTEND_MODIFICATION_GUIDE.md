@@ -144,3 +144,56 @@
   ```html
   <a href="{% url 'admin_cycle_history' cycle_id=item.cycle.id %}" class="btn btn-ghost btn-small">📜 버전 변경 이력</a>
   ```
+
+---
+
+### 11) 커스텀 HTML 리포트 템플릿 업로드 & 토글 - `admin_custom/reports.html`
+- **목적**: 관리자가 커스텀 HTML 결과지 양식 파일(.html)을 업로드하고, 커스텀 템플릿 ↔ 기본 템플릿 적용 여부를 토글.
+- **백엔드 API**:
+  - `POST /admin-panel/cycles/<cycle_id>/upload-template/` (`admin_upload_custom_template`)
+  - `POST /admin-panel/cycles/<cycle_id>/toggle-template/` (`admin_toggle_custom_template`)
+- **HTML 구현 예시**:
+  ```html
+  <div class="card p-4 my-3">
+      <h4>🎨 커스텀 HTML 결과지 템플릿 관리</h4>
+      <p class="text-muted">디자인된 HTML 양식을 업로드하면 멤버별 PDF 생성 시 적용됩니다.</p>
+      
+      <!-- HTML 파일 업로드 폼 -->
+      <form method="POST" action="{% url 'admin_upload_custom_template' cycle_id=cycle.id %}" enctype="multipart/form-data" class="d-flex gap-2 my-2">
+          {% csrf_token %}
+          <input type="file" name="html_file" accept=".html, .htm" class="form-control" required>
+          <button type="submit" class="btn btn-primary">📤 양식 업로드 및 적용</button>
+      </form>
+
+      <!-- 템플릿 사용 여부 토글 버튼 -->
+      {% if cycle.custom_html_file %}
+          <div class="mt-2">
+              <span>현재 업로드된 파일: <code>{{ cycle.custom_html_file.name }}</code></span>
+              <form method="POST" action="{% url 'admin_toggle_custom_template' cycle_id=cycle.id %}" class="d-inline ms-2">
+                  {% csrf_token %}
+                  {% if cycle.use_custom_template %}
+                      <button type="submit" class="btn btn-warning btn-sm">커스텀 템플릿 적용 해제</button>
+                  {% else %}
+                      <button type="submit" class="btn btn-success btn-sm">커스텀 템플릿 적용하기</button>
+                  {% endif %}
+              </form>
+          </div>
+      {% endif %}
+  </div>
+  ```
+
+---
+
+### 12) 질문지 제작 모달 내 관리자 카테고리 필드 추가 - `admin_custom/questions.html`
+- **목적**: 5점 척도/주관식 문항 생성 시 관리자 전용 역량 카테고리 (예: Active Ownership, Deep Immersion, Mutual Growth) 지정.
+- **백엔드 API**: `POST /admin-panel/cycles/<cycle_id>/questions/add/` (파라미터: `category`)
+- **HTML 구현 예시**:
+  ```html
+  <div class="form-group my-2">
+      <label>관리자 역량 카테고리</label>
+      <input type="text" name="category" class="form-control" placeholder="예: Active Ownership, 소통역량" value="기본 역량">
+      <small class="form-text text-muted">방사형/원/막대 그래프 생성을 위해 관리자가 문항별로 지정하는 역량 구분입니다.</small>
+  </div>
+  ```
+
+
