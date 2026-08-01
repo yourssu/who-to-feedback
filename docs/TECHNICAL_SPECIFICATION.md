@@ -1,79 +1,170 @@
-# 기술 명세서 및 시스템 아키텍처 (Technical Specification)
+# PeerFlow 피어리뷰 시스템 통합 기술 명세서 (Technical Specification)
 
-본 문서는 Django 기반 피어리뷰 웹 애플리케이션 (PeerFlow)의 내부 구조, 시스템 파이프라인, 데이터 모델, 8개 관리자 센터 및 API 연동 명세서입니다.
+본 문서는 **Django 기반 익명 360도 피어리뷰 및 AI/자동화 리포트 생성 시스템 (PeerFlow)**의 전체 시스템 아키텍처, 데이터 모델, 서비스 계층, 권한/보안 체계, 리포트 파이프라인 및 URL 라우팅 명세를 다룹니다.
 
 ---
 
-## 1. 시스템 구조 및 워크플로우
+## 1. 시스템 아키텍처 개요 (Architecture Overview)
 
-시스템은 웹 애플리케이션(Django), 인증 및 메세징 서비스(Slack SDK), PDF/PPT 생성 엔진(xhtml2pdf / python-pptx)으로 구성됩니다.
+PeerFlow 백엔드는 MVC(Model-View-Controller, Django MVT) 패턴과 독립된 **서비스 아키텍처(Service Layer)**를 채택하여 백엔드 비즈니스 로직, 데이터 검증, 리포트 생성 엔진, Slack 메시징 서비스를 모듈화하였습니다.
 
+```mermaid
+graph TD
+    Client[리뷰어 / 관리자 클라이언트] --> DjangoURL[Django URL Router (core/urls.py)]
+    DjangoURL --> AdminViews[관리자 센터 뷰 (admin_views.py)]
+    DjangoURL --> ReviewViews[리뷰어 폼/대시보드 뷰 (review_views.py)]
+    
+    AdminViews --> AuthDecorator[@superuser_required 데코레이터]
+    
+    AdminViews --> ValService[DataValidationService (사전검증/정규화)]
+    AdminViews --> LayoutService[LayoutCheckService (자동 레이아웃 검수)]
+    AdminViews --> PDFService[PDFReportService (xhtml2pdf 엔진)]
+    AdminViews --> PPTService[PPTReportService (python-pptx 엔진)]
+    AdminViews --> ReportService[ReportManagementService (샘플/체크리스트)]
+    AdminViews --> SlackService[SlackService (PIN/독촉/리포트 DM)]
+    
+    ValService --> ORM[(SQLite / Django ORM DB)]
+    LayoutService --> ORM
+    PDFService --> MediaStore[(Media Storage /reports_pdf/)]
+    PPTService --> MediaStore[(Media Storage /reports_ppt/)]
 ```
-[관리자 (PeerFlow Admin Panel)] ──> [Django 웹 시스템] <─── [리뷰어 (PeerFlow Reviewer)]
-                                         │
-                                 [Slack API (DM)]
-                                         │
-                       (PIN 코드 / 리마인더 / PDF/PPT 리포트)
-```
 
 ---
 
-## 2. 주요 모듈 명세
+## 2. 데이터베이스 ORM 스키마 명세 (`core/models.py`)
 
-### 2.1 인증 서비스 (`core/views/auth_views.py`, `core/services/slack_service.py`)
-- **PIN 코드 생성**: 리뷰 회차 시작 시 `ReviewAuthCode` 모델을 통해 각 사용자별 6자리 숫자 PIN 코드를 생성합니다.
-- **Slack DM 메세지 발송**: `slack_sdk.WebClient.chat_postMessage` API를 이용하여 사용자 Slack ID로 PIN 코드와 접속 URL을 전송합니다.
-- **세션 인증**: 사용자는 6자리 PIN 코드를 입력하여 로그인하며, 세션에 `member_id` 및 `cycle_id`가 저장됩니다.
+시스템은 총 **9개의 데이터 모델**로 구성되어 있습니다.
 
-### 2.2 리뷰 작성, 임시 저장 및 마감 제어 (`core/views/review_views.py`)
-- 관리자가 매칭한 리뷰어-리뷰이 쌍(`ReviewAssignment`) 단위로 응답을 작성합니다.
-- **임시 저장 (Draft)**: 작성 중인 답변을 `ReviewAssignment.draft_data`에 JSON 형식으로 보존합니다.
-- **마감 시각 기반 수정 및 자동 잠금**:
-  - 마감 이전 (`now <= cycle.end_at`): 제출 완료 후에도 마감 시각 전까지는 수정 허용 (`r-submitted-editable`)
-  - 마감 경과 (`now > cycle.end_at`): 제출 답변 수정 불가능 및 자동 잠금 (`r-submitted-locked`)
+### 1) `Member` (팀원 정보 및 권한)
+- `name`: 성명 (CharField, max_length=50)
+- `email`: 이메일 주소 (EmailField, unique=True)
+- `slack_user_id`: Slack User ID (CharField, max_length=50)
+- `department`: 소속 부서 (CharField, max_length=100)
+- `role`: 권한 역할 (`ADMIN` | `MEMBER`, CharField)
+- `normalized_name`: 정규화 병합된 이름 (CharField, blank=True)
 
-### 2.3 커스텀 관리자 웹 UI (`core/views/admin_views.py` - 8개 전용 센터)
-모든 페이지는 Django superuser 계정(`is_superuser=True`)으로 로그인되어야 접근 가능합니다(`@superuser_required`).
+### 2) `ReviewCycle` (피어리뷰 회차 관리)
+- `title`: 회차명 (CharField, max_length=200)
+- `start_at`: 시작 일시 (DateTimeField)
+- `end_at`: 마감 일시 (DateTimeField)
+- `status`: 진행 상태 (`DRAFT` | `ACTIVE` | `COMPLETED` | `CLOSED`)
+- `auto_reminder_enabled`: 자동 독촉 활성화 여부 (BooleanField, default=True)
+- `auto_reminder_time`: 자동 독촉 시각 (TimeField, default="10:00")
+- `version`: 템플릿/문항 버전 (CharField, default="v1")
+- **프로퍼티**: `completion_rate`, `is_all_submitted`, `is_deadline_passed`, `is_question_locked`
 
-1. **메인 대시보드 (`/admin-panel/`)**: 등록된 회차 목록, 회차별 제출 진행률(%), 검토 대기 리포트 개수 및 빠른 작업 버튼
-2. **팀원 관리 (`/admin-panel/members/`)**: 사용자 데이터 등록(이름, 이메일, Slack User ID, 부서, 역할 `ADMIN`/`MEMBER`), 수정 및 삭제
-3. **⭐ 데이터 검증 (`/admin-panel/validation/`)**:
-   - 엑셀 업로드 직후 필수값 오류 검출 (이름 누락, 팀/역할 누락, 점수 누락 등)
-   - 이름/닉네임 유사도 기반 정규화 자동 병합 제안 (`Alex / alex / ALEX` ➔ `Alex` 병합)
-   - 응답 품질 필터 ("없습니다", "잘 모르겠습니다" 등 의미 없는 서술형 피드백 자동 검출 및 리포트 제외)
-   - 샘플 데이터 3명 레이아웃 검수 모드
-4. **질문지 제작 (`/admin-panel/cycles/<id>/questions/`)**: 문항 추가, 삭제, 4가지 유형 및 척도 라벨(`NUMERIC_5`/`TEXT_5`) 옵션 선택
-5. **매칭 관리 (`/admin-panel/cycles/<id>/assignments/`)**:
-   - 부서별 필터링 기반 1:1/1:N 매칭 지정 및 360도 전체 매칭 생성
-   - `ACTIVE` 진행 상태에서 매칭 추가 시 신규 리뷰어에게 PIN 코드가 전송됨
-6. **진행 상태 대시보드 (`/admin-panel/cycles/<id>/status/`)**:
-   - 회차 진행률 프로그레스 바 및 리뷰어별 미작성 동료 명단 조회
-   - 자동 리마인더 설정 (매일 10:00 자동 발송) 및 Strict 100% 제출 게이트 제어
-7. **리포트 검토 (`/admin-panel/cycles/<id>/reports/`)**:
-   - 수신자별 익명 피드백 웹 요약 미리보기, PDF 및 PPT 결과 리포트 다운로드
-   - 생성 실패 로그 보존 및 1클릭 재생성, 버전별(v1/v2) 부분 재생성 지원
-8. **Slack DM 메세지 전송 (`/admin-panel/messages/send/`)**: 특정 사용자 또는 전체 사용자 대상 커스텀 DM 전송 및 실패한 대상만 재발송
+### 3) `ReviewCycleVersionLog` (회차 버전 변경 이력)
+- `cycle`: FK `ReviewCycle` (CASCADE)
+- `version`: 버전 (CharField, max_length=10)
+- `changed_summary`: 변경 내용 요약 (TextField)
+- `created_at`: 기록 일시 (DateTimeField)
+
+### 4) `ReviewQuestion` (리뷰 질문 문항)
+- `cycle`: FK `ReviewCycle` (CASCADE)
+- `order`: 문항 순서 (PositiveIntegerField)
+- `question_type`: 문항 유형 (`RATING` | `TEXT` | `SINGLE_CHOICE` | `MULTIPLE_CHOICE`)
+- `scale_type`: 척도 유형 (`NUMERIC_5` | `TEXT_5`)
+- `content`: 질문 내용 (TextField)
+
+### 5) `QuestionOption` (객관식 선택지)
+- `question`: FK `ReviewQuestion` (CASCADE)
+- `option_text`: 선택지 텍스트 (CharField, max_length=200)
+- `order`: 선택지 순서 (PositiveIntegerField)
+
+### 6) `ReviewAuthCode` (Slack 6자리 PIN 인증 코드)
+- `member`: FK `Member`
+- `cycle`: FK `ReviewCycle`
+- `code`: 6자리 핀코드 (CharField, max_length=6)
+- `is_used`: 사용 여부 (BooleanField)
+
+### 7) `ReviewAssignment` (리뷰 매칭)
+- `cycle`: FK `ReviewCycle`
+- `reviewer`: FK `Member` (리뷰 작성자)
+- `reviewee`: FK `Member` (리뷰 대상자)
+- `is_submitted`: 제출 완료 여부 (BooleanField)
+- `submitted_at`: 제출 일시 (DateTimeField)
+- `draft_data`: 전체 폼 통합 임시 저장 데이터 (JSONField, null=True)
+- `draft_saved_at`: 임시 저장 일시 (DateTimeField)
+
+### 8) `ReviewAnswer` (리뷰 답변 데이터)
+- `assignment`: FK `ReviewAssignment`
+- `question`: FK `ReviewQuestion`
+- `rating_value`: 척도 점수 (IntegerField, 1~5)
+- `answer_text`: 주관식 피드백 (TextField)
+- `selected_options`: M2M `QuestionOption`
+- `is_excluded_from_report`: 응답 품질 필터 제외 여부 (BooleanField)
+- `exclusion_reason`: 제외 사유 (CharField)
+
+### 9) `ReviewReport` (피드백 결과 리포트)
+- `cycle`: FK `ReviewCycle`
+- `reviewee`: FK `Member`
+- `pdf_file`: PDF 파일 경로 (FileField, upload_to='reports_pdf/')
+- `ppt_file`: PPT 파일 경로 (FileField, upload_to='reports_ppt/')
+- `version`: 리포트 버전 (CharField)
+- `validation_status`: 5단계 검수 상태 (`GENERATED` | `NEEDS_REVIEW` | `APPROVED` | `SENT` | `FAILED`)
+- `admin_memo`: 관리자 수정 메모/코멘트 (TextField)
+- `layout_check_passed`: 자동 레이아웃 검수 통과 여부 (BooleanField)
+- `layout_issue_notes`: 레이아웃 검수 이슈 노트 (TextField)
+- `error_log`: 생성 예외 로그 (TextField)
+- `is_sent`: Slack DM 발송 여부 (BooleanField)
+
+### 10) `SlackDeliveryLog` (Slack DM 발송 이력)
+- `cycle`: FK `ReviewCycle` (null=True)
+- `member`: FK `Member`
+- `delivery_type`: DM 종류 (`AUTH_CODE` | `REMINDER` | `REPORT` | `CUSTOM_MSG` | `TEST_DM`)
+- `message_content`: 메시지 본문 (TextField)
+- `is_success`: 성공 여부 (BooleanField)
+- `error_message`: 오류 원인 (TextField)
 
 ---
 
-## 3. 데이터베이스 ORM 스키마
+## 3. 핵심 서비스 모듈 명세 (`core/services/`)
 
-- **Member**: `name`, `email` (unique), `slack_user_id`, `department`, `role` (`ADMIN` | `MEMBER`), `normalized_name`
-- **ReviewCycle**: `title`, `start_at`, `end_at`, `status` (`DRAFT` | `ACTIVE` | `COMPLETED` | `CLOSED`), `auto_reminder_enabled`, `version`
-- **ReviewQuestion**: `cycle` (FK), `order`, `question_type` (`RATING` | `TEXT` | `SINGLE_CHOICE` | `MULTIPLE_CHOICE`), `scale_type` (`NUMERIC_5` | `TEXT_5`), `content`
-- **QuestionOption**: `question` (FK), `option_text`, `order`
-- **ReviewAuthCode**: `member` (FK), `cycle` (FK), `code` (char 6), `created_at`, `is_used`
-- **ReviewAssignment**: `cycle` (FK), `reviewer` (FK Member), `reviewee` (FK Member), `is_submitted`, `submitted_at`, `draft_data` (JSON), `draft_saved_at`
-- **ReviewAnswer**: `assignment` (FK), `question` (FK), `rating_value`, `answer_text`, `selected_options` (M2M QuestionOption), `is_excluded_from_report`
-- **ReviewReport**: `cycle` (FK), `reviewee` (FK Member), `pdf_file`, `ppt_file`, `version`, `validation_status` (`APPROVED` | `NEEDS_REVIEW` | `FAILED`), `created_at`, `is_sent`, `sent_at`, `error_log`
-- **DataValidationLog**: `cycle` (FK), `row_index`, `issue_type`, `current_value`, `is_resolved`
+### 1) `DataValidationService` ([validation_service.py](file:///Users/yoon/who-to-feedback/core/services/validation_service.py))
+- **`validate_excel_data(file_obj, cycle)`**: 엑셀 업로드 직후 이름 누락, 중복 이름, 대소문자 불일치, 팀/역할 누락 등 6가지 데이터 오류 사전 검증.
+- **`get_normalization_suggestions(cycle)`**: `difflib.SequenceMatcher` 알고리즘으로 유사도 85% 이상 닉네임/영문 이름(`Alex / alex / ALEX`) 정규화 병합 제안.
+- **`filter_response_quality(answers)`**: `"없습니다"`, `"잘 모르겠습니다"` 등 의미 없는 주관식 답변 자동 감지 및 제외 처리.
+
+### 2) `LayoutCheckService` ([layout_service.py](file:///Users/yoon/who-to-feedback/core/services/layout_service.py))
+- **`check_layout_overflow(cycle, reviewee)`**: 300자/500자 이상 긴 글 overflow 및 키워드 태그 8개 이상 넘침 현상을 자동 검사하여 `layout_check_passed` 및 이슈 사유 저장.
+
+### 3) `ReportManagementService` ([report_service.py](file:///Users/yoon/who-to-feedback/core/services/report_service.py))
+- **`generate_sample_reports(cycle, sample_count=3)`**: 실데이터 발송 전 대표 샘플 2~3명만 리포트를 미리 생성해 템플릿 테스트 모드 구동.
+- **`get_delivery_checklist(cycle)`**: Slack 발송 전 이름 / 팀 / Slack ID / PDF 존재 여부 / 승인 여부 5가지 지표 표 집계.
+
+### 4) `PDFReportService` & `PPTReportService` ([pdf_service.py](file:///Users/yoon/who-to-feedback/core/services/pdf_service.py), [ppt_service.py](file:///Users/yoon/who-to-feedback/core/services/ppt_service.py))
+- **익명성 보장 규칙**: Reviewee 리포트 생성 및 요약 데이터에서 Reviewer 작성자의 개인식별 정보를 완전 배제하고 무작위 렌더링.
+- **예외 로그 보존 & 1클릭 재시도**: 리포트 생성 실패 시 `error_log`에 예외를 수집하고 `admin_regenerate_report` 뷰로 1클릭 재시도 처리.
+
+### 5) `SlackService` ([slack_service.py](file:///Users/yoon/who-to-feedback/core/services/slack_service.py))
+- `send_auth_code_dm`, `send_reminder_dm`, `send_pdf_report_dm`, `send_test_dm`, `send_failed_reminders_retry` 메서드를 포함하며, 모든 DM 발송 결과를 `SlackDeliveryLog`에 전수 저장.
 
 ---
 
-## 4. 실제 Slack App 연동 세팅 가이드
+## 4. 보안 및 접근 제어 명세 (Security & Permissions)
 
-1. **Slack App 생성**: [https://api.slack.com/apps](https://api.slack.com/apps) 접속 후 `From scratch`로 앱 생성
-2. **Bot Token Scopes 4가지 부여**: `chat:write`, `files:write`, `im:write`, `users:read`
-3. **Bot Token 발급**: `Install to Workspace` 실행 후 `xoxb-` 토큰 복사
-4. **환경 변수 설정**: `.env` 파일에 `SLACK_BOT_TOKEN="xoxb-..."`, `MOCK_SLACK_MODE="False"` 지정
-5. **Slack Member ID 입력**: Slack 사용자 프로필에서 복사한 `U12345678` ID를 `/admin-panel/members/` 등록
+- **관리자 권한 분리**: `@superuser_required` 데코레이터 적용 ➔ Django Superuser 또는 `role == 'ADMIN'` 인 계정만 커스텀 어드민 센터(`/admin-panel/`) 접근 허용.
+- **리뷰어 세션 검증**: `/review/<assignment_id>/` 진입 시 `request.session['member_id']`와 `assignment.reviewer_id`를 검증하여 본인 할당 리뷰만 작성 허용.
+- **질문지 잠금 정책 (ACTIVE Lock)**: 회차가 시작(`ACTIVE`)된 이후에는 질문 문항 및 선택지 추가/삭제 요청을 백엔드 뷰 차원에서 차단.
+- **마감 전 수정 / 마감 후 잠금**: 마감 시각 이전(`now <= cycle.end_at`)에는 재수정 허용, 마감 시각 경과 후에는 `is_locked = True` 처리하여 수정 금지.
+
+---
+
+## 5. URL 라우팅 패치 명세 (`core/urls.py`)
+
+| URL 패턴 | 뷰 함수 | 기능 설명 |
+|---|---|---|
+| `/login/` | `auth_views.login_view` | Slack 6자리 PIN 코드 인증 로그인 |
+| `/` | `review_views.review_dashboard` | 리뷰어 개인 대시보드 |
+| `/review/<assignment_id>/` | `review_views.review_form` | 피어리뷰 폼 작성 및 마감 잠금 제어 |
+| `/review/<assignment_id>/save-draft/` | `review_views.save_draft` | 전체 질문지 폼 통합 임시 저장 API |
+| `/admin-panel/` | `admin_views.admin_dashboard` | 관리자 메인 대시보드 |
+| `/admin-panel/validation/` | `admin_views.admin_validation` | 데이터 사전 검증 & 정규화 센터 |
+| `/admin-panel/cycles/<id>/sample-reports/` | `admin_views.admin_generate_sample_reports` | 샘플 3명 미리보기 테스트 리포트 생성 |
+| `/admin-panel/cycles/<id>/layout-check/` | `admin_views.admin_run_layout_check` | 자동 레이아웃 검수 일괄 실행 |
+| `/admin-panel/reports/<id>/regenerate/` | `admin_views.admin_regenerate_report` | 1클릭 개별 리포트/실패 재시도 |
+| `/admin-panel/reports/<id>/memo/` | `admin_views.admin_save_report_memo` | 관리자 수정 메모/코멘트 저장 API |
+| `/admin-panel/cycles/<id>/history/` | `admin_views.admin_cycle_history` | 회차 및 템플릿/문항 버전 변경 이력 뷰 |
+| `/admin-panel/cycles/<id>/checklist/` | `admin_views.admin_delivery_checklist` | 발송 대상 체크리스트 뷰 |
+| `/admin-panel/messages/retry-failed/` | `admin_views.admin_retry_failed_messages` | 실패한 Slack DM 1클릭 재발송 |
+| `/admin-panel/messages/send-test/` | `admin_views.admin_send_test_dm` | 발송 전 관리자 테스트 DM 전송 |
