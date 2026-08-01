@@ -196,4 +196,25 @@
   </div>
   ```
 
+---
+
+### 13) CSV 파일 업로드를 통한 팀원 일괄 임포트 폼 - `admin_custom/members.html`
+- **목적**: 수십~수백 명의 팀원 목록을 CSV 파일로 일괄 추가 및 업데이트.
+- **백엔드 API**: `POST /admin-panel/members/import-csv/` (`admin_import_members_csv`)
+- **지원 CSV 컬럼 명칭**: `name` (이름), `email` (이메일), `slack_user_id` (Slack ID), `department` (부서), `role` (역할: ADMIN/MEMBER)
+- **HTML 구현 예시**:
+  ```html
+  <div class="card p-4 my-3">
+      <h4>📥 CSV 파일로 팀원 일괄 추가 (Bulk Import)</h4>
+      <p class="text-muted">CSV 양식(이름, 이메일, slack_user_id, department, role)에 맞춰 준비된 파일을 업로드하세요.</p>
+
+      <form method="POST" action="{% url 'admin_import_members_csv' %}" enctype="multipart/form-data" class="d-flex gap-2 my-2">
+          {% csrf_token %}
+          <input type="file" name="csv_file" accept=".csv" class="form-control" required>
+          <button type="submit" class="btn btn-primary">📤 CSV 멤버 일괄 등록</button>
+      </form>
+  </div>
+  ```
+
+
 

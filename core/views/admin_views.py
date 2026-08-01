@@ -742,3 +742,25 @@ def admin_toggle_custom_template(request, cycle_id):
         messages.success(request, f"커스텀 HTML 양식 템플릿 사용이 [{status_str}] 되었습니다.")
     return redirect('admin_reports', cycle_id=cycle.id)
 
+
+@superuser_required
+def admin_import_members_csv(request):
+    """CSV 파일업로드를 통한 멤버(팀원) 일괄 추가/업데이트"""
+    if request.method == 'POST' and request.FILES.get('csv_file'):
+        csv_file = request.FILES['csv_file']
+        if not csv_file.name.lower().endswith('.csv'):
+            messages.error(request, "올바른 CSV 파일(.csv)을 업로드해 주세요.")
+            return redirect('admin_members')
+
+        try:
+            res = DataValidationService.import_members_from_csv(csv_file)
+            messages.success(
+                request,
+                f"CSV 멤버 임포트 성공! 신규 추가: {res['created']}명, 업데이트: {res['updated']}명 (총 {res['total']}명)"
+            )
+        except Exception as e:
+            messages.error(request, f"CSV 임포트 중 오류가 발생했습니다: {str(e)}")
+
+    return redirect('admin_members')
+
+
