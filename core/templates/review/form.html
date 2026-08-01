@@ -21,7 +21,7 @@
     <p class="question-kicker">{{ forloop.counter }} / {{ questions_data|length }} · {{ item.question.question_type }}</p>
     <h2 class="question-title">{{ item.question.content }}</h2>
     {% if item.question.question_type == 'RATING' %}
-    <p class="r-help">1점은 전혀 그렇지 않음, 5점은 매우 그렇다는 의미예요.</p>
+    <p class="r-help">관리자 설정에 따라 숫자 1–5 또는 텍스트 5단계 라벨이 표시됩니다.</p>
     <div class="score-grid">
       {% for opt in item.scale_options %}<div class="rating-option"><input type="radio" name="q_{{ item.question.id }}_rating" id="q_{{ item.question.id }}_r_{{ opt.val }}" value="{{ opt.val }}" {% if item.existing_answer and item.existing_answer.rating_value == opt.val %}checked{% endif %} required><label for="q_{{ item.question.id }}_r_{{ opt.val }}">{{ opt.label }}</label></div>{% endfor %}
       <span class="rating-value" data-rating-value>{% if item.existing_answer and item.existing_answer.rating_value %}{{ item.existing_answer.rating_value }} / 5{% else %}0 / 5{% endif %}</span>
@@ -30,8 +30,8 @@
     <div class="banner desktop-only" style="margin-top:24px">평가 근거를 다음 문항에서 자세히 남길 수 있어요.</div>
     {% elif item.question.question_type == 'TEXT' %}
     <p class="r-help">상황과 행동을 중심으로 작성하면 동료에게 더 도움이 됩니다.</p>
-    <label class="card-title" for="q-{{ item.question.id }}"><span class="mobile-only">익명 피드백</span><span class="desktop-only">함께 일하며 좋았던 점을 알려주세요</span></label>
-    <textarea class="form-control" id="q-{{ item.question.id }}" name="q_{{ item.question.id }}_text" rows="6" maxlength="500" data-count="#count-{{ item.question.id }}" placeholder="구체적인 상황과 행동을 중심으로 작성해 주세요." data-mobile-placeholder="함께 일하며 좋았던 점과 다음에 시도해 볼 점을 작성해 주세요." data-desktop-placeholder="구체적인 상황과 행동을 중심으로 작성해 주세요." required>{% if item.existing_answer %}{{ item.existing_answer.answer_text }}{% endif %}</textarea>
+    <label class="card-title" for="q-{{ item.question.id }}">익명 피드백</label>
+    <textarea class="form-control" id="q-{{ item.question.id }}" name="q_{{ item.question.id }}_text" rows="6" maxlength="500" data-count="#count-{{ item.question.id }}" placeholder="함께 일하며 좋았던 점과 다음에 시도해 볼 점을 작성해 주세요." data-mobile-placeholder="함께 일하며 좋았던 점과 다음에 시도해 볼 점을 작성해 주세요." data-desktop-placeholder="함께 일하며 좋았던 점과 다음에 시도해 볼 점을 작성해 주세요." required>{% if item.existing_answer %}{{ item.existing_answer.answer_text }}{% endif %}</textarea>
     <div class="text-counter"><span id="count-{{ item.question.id }}">0</span> / 500</div>
     <div class="banner" style="margin-top:14px"><span class="mobile-only">피드백은 익명으로 종합 리포트에 반영됩니다.</span><span class="desktop-only">응답은 익명으로 집계되어 솔직한 피드백을 남길 수 있어요.</span></div>
     {% elif item.question.question_type == 'SINGLE_CHOICE' %}
@@ -40,8 +40,7 @@
     {% elif item.question.question_type == 'MULTIPLE_CHOICE' %}
     <p class="r-help">여러 개를 선택할 수 있어요.</p>
     <div class="option-group">{% for opt in item.options %}<label class="option-item"><input type="checkbox" name="q_{{ item.question.id }}_multi" value="{{ opt.id }}" {% if item.existing_selected and opt.id in item.existing_selected %}checked{% endif %}><span>{{ opt.option_text }}</span></label>{% endfor %}</div>
-    <div class="banner mobile-only" style="margin-top:24px">마감 전까지는 제출 후에도 답변을 수정할 수 있어요. 마감 후에는 수정할 수 없어요.</div>
-    <div class="banner banner-warning desktop-only" style="margin-top:24px">마감 전까지는 제출 후에도 답변을 수정할 수 있어요. 마감 후에는 수정할 수 없어요.</div>
+    <div class="banner" style="margin-top:24px">선택한 응답은 리뷰 제출 시 현재 매칭에 저장됩니다.</div>
     {% endif %}
     <div class="wizard-actions">
       {% if item.question.question_type == 'TEXT' %}<button class="btn btn-tonal mobile-only" type="button">임시 저장</button>{% endif %}
