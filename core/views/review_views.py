@@ -35,7 +35,7 @@ def review_dashboard(request):
     completion_rate = int((completed_count / total_count * 100)) if total_count > 0 else 0
     is_completed = (total_count > 0 and completed_count == total_count)
 
-    days_left = (cycle.end_at - timezone.now()).days if cycle.end_at > timezone.now() else 0
+    days_left = (cycle.end_at - timezone.now()).days if (cycle.end_at and cycle.end_at > timezone.now()) else 0
 
     # 템플릿 (dashboard.html) 호환용: item.id, item.reviewee, item.is_submitted 및 item.assignment 모두 지원
     assignments = []
