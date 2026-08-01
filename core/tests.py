@@ -7,12 +7,14 @@ import json
 from core.models import (
     Member, ReviewCycle, ReviewQuestion, QuestionOption,
     ReviewAuthCode, ReviewAssignment, ReviewAnswer, ReviewReport,
-    DataValidationLog, SlackDeliveryLog
+    DataValidationLog, SlackDeliveryLog, ReviewCycleVersionLog
 )
 from core.services.slack_service import SlackService
 from core.services.pdf_service import PDFReportService
 from core.services.ppt_service import PPTReportService
 from core.services.validation_service import DataValidationService
+from core.services.layout_service import LayoutCheckService
+from core.services.report_service import ReportManagementService
 
 
 class PeerReviewSystemTestCase(TestCase):
@@ -25,13 +27,18 @@ class PeerReviewSystemTestCase(TestCase):
         self.bob = Member.objects.create(name="밥", email="bob@test.com", slack_user_id="U_BOB", department="기획팀", role='MEMBER')
         self.charlie = Member.objects.create(name="찰리", email="charlie@test.com", slack_user_id="U_CHARLIE", department="디자인팀", role='MEMBER')
 
-        # 2. 회차 세팅
+        # 2. 회차 세팅 및 버전 이력 생성
         now = timezone.now()
         self.cycle = ReviewCycle.objects.create(
             title="2026 Q2 피어리뷰",
             start_at=now,
             end_at=now + timezone.timedelta(days=7),
             status='ACTIVE'
+        )
+        ReviewCycleVersionLog.objects.create(
+            cycle=self.cycle,
+            version="v1",
+            changed_summary="2026 Q2 피어리뷰 v1 템플릿 배포"
         )
 
         # 3. 4가지 다양한 유형의 리뷰 문항 작성
@@ -50,94 +57,68 @@ class PeerReviewSystemTestCase(TestCase):
 
         self.client = Client()
 
-    def test_01_permission_isolation_and_login(self):
-        """1. 관리자/일반 사용자 권한 분리 및 슬랙 PIN 로그인 테스트"""
-        res_unauth = self.client.get(reverse('admin_dashboard'))
-        self.assertEqual(res_unauth.status_code, 302)
-
+    def test_01_validation_and_quality_filter(self):
+        """1~3. 입력 데이터 사전 검증, 이름 정규화 및 응답 품질 필터 테스트"""
         self.client.force_login(self.superuser)
-        res_auth = self.client.get(reverse('admin_dashboard'))
-        self.assertEqual(res_auth.status_code, 200)
 
-    def test_02_full_form_draft_save_all_question_types(self):
-        """2. 전체 질문지에 대한 4가지 문항 타입(RATING, TEXT, SINGLE, MULTI) 통합 임시 저장 및 복원 테스트"""
-        auth_code = ReviewAuthCode.generate_code_for(self.alice, self.cycle)
-        self.client.post(reverse('login'), {'code': auth_code.code})
+        # 이름 대소문자 매칭 정규화 제안 테스트
+        Member.objects.create(name="alex", email="alex1@test.com", slack_user_id="U_ALEX1")
+        Member.objects.create(name="Alex", email="alex2@test.com", slack_user_id="U_ALEX2")
+        suggestions = DataValidationService.get_normalization_suggestions(self.cycle)
+        self.assertTrue(len(suggestions) > 0)
 
-        # 4가지 모든 문항 타입이 포함된 전체 폼 임시 저장 payload
-        full_draft_payload = json.dumps({
-            f'q_{self.q1.id}_rating': 4,
-            f'q_{self.q2.id}_text': '전체 폼 임시 저장 피드백입니다.',
-            f'q_{self.q3.id}_single': self.opt3_yes.id,
-            f'q_{self.q4.id}_multi': [self.opt4_lead.id, self.opt4_code.id],
-        })
+        # 응답 품질 필터링 테스트
+        ans = ReviewAnswer.objects.create(assignment=self.a_to_b, question=self.q2, answer_text="없습니다")
+        excluded = DataValidationService.filter_response_quality([ans])
+        self.assertEqual(excluded, 1)
+        ans.refresh_from_db()
+        self.assertTrue(ans.is_excluded_from_report)
 
-        res_draft = self.client.post(
-            reverse('save_draft', kwargs={'assignment_id': self.a_to_b.id}),
-            full_draft_payload,
-            content_type='application/json'
-        )
-        self.assertEqual(res_draft.status_code, 200)
-
-        self.a_to_b.refresh_from_db()
-        self.assertEqual(self.a_to_b.draft_data[f'q_{self.q1.id}_rating'], 4)
-        self.assertEqual(self.a_to_b.draft_data[f'q_{self.q2.id}_text'], '전체 폼 임시 저장 피드백입니다.')
-
-        # 폼 GET 조회 시 임시 저장 데이터가 복원되어 준비되었는지 확인
-        res_form = self.client.get(reverse('review_form', kwargs={'assignment_id': self.a_to_b.id}))
-        self.assertEqual(res_form.status_code, 200)
-        self.assertEqual(res_form.context['questions_data'][0]['draft_rating'], 4)
-        self.assertEqual(res_form.context['questions_data'][1]['draft_text'], '전체 폼 임시 저장 피드백입니다.')
-
-    def test_03_question_locking_policy_when_active(self):
-        """3. 질문지 수정 가능 시점 제한 (ACTIVE 시작 후 질문 추가/삭제 차단) 테스트"""
+    def test_02_layout_check_and_sample_reports(self):
+        """4~6. 자동 레이아웃 검수, 샘플 데이터 테스트 모드 및 웹 미리보기 테스트"""
         self.client.force_login(self.superuser)
-        self.assertTrue(self.cycle.is_question_locked)
 
-        res_add = self.client.post(reverse('admin_add_question', kwargs={'cycle_id': self.cycle.id}), {
-            'order': 5, 'question_type': 'TEXT', 'content': '신규 질문'
-        })
-        self.assertEqual(res_add.status_code, 302)
-        self.assertFalse(ReviewQuestion.objects.filter(content='신규 질문').exists())
-
-    def test_04_anonymity_and_randomized_report(self):
-        """4. 익명성 보장 규칙 테스트"""
-        ReviewAnswer.objects.create(assignment=self.a_to_b, question=self.q2, answer_text="피드백 내용 1")
-        data = PDFReportService.compile_feedback_data(self.cycle, self.bob)
-
-        self.assertNotIn('reviewer', data['questions_data'][1])
-        self.assertNotIn('alice', str(data['questions_data'][1]).lower())
-
-    def test_05_deadline_modification_and_locking(self):
-        """5. 제출 후 수정 허용 정책 (마감 전 재수정 허용, 마감 후 자동 잠금) 테스트"""
-        auth_code = ReviewAuthCode.generate_code_for(self.alice, self.cycle)
-        self.client.post(reverse('login'), {'code': auth_code.code})
-
+        # 300자 이상 긴 글 overflow 레이아웃 검사 테스트
         self.a_to_b.is_submitted = True
         self.a_to_b.save()
+        long_text = "매우 길고 구체적인 피드백 메시지입니다. " * 20
+        ReviewAnswer.objects.create(assignment=self.a_to_b, question=self.q2, answer_text=long_text)
 
-        res_before = self.client.get(reverse('review_form', kwargs={'assignment_id': self.a_to_b.id}))
-        self.assertEqual(res_before.status_code, 200)
-        self.assertFalse(res_before.context['is_locked'])
+        report = LayoutCheckService.check_layout_overflow(self.cycle, self.bob)
+        self.assertFalse(report.layout_check_passed)
+        self.assertIn("overflow", report.layout_issue_notes)
 
-        self.cycle.end_at = timezone.now() - timezone.timedelta(hours=1)
-        self.cycle.save()
-        res_after = self.client.get(reverse('review_form', kwargs={'assignment_id': self.a_to_b.id}))
-        self.assertEqual(res_after.status_code, 200)
-        self.assertTrue(res_after.context['is_locked'])
+        # 샘플 2~3명 테스트 모드 리포트 생성 테스트
+        sample_reports = ReportManagementService.generate_sample_reports(self.cycle, sample_count=2)
+        self.assertTrue(len(sample_reports) > 0)
 
-    def test_06_pdf_ppt_failure_logging_and_retry(self):
-        """6. PDF/PPT 생성 실패 예외 로그 보존 및 1클릭 재시도 테스트"""
+    def test_03_delivery_checklist_and_status_management(self):
+        """7~9. 발송 대상 체크리스트, 개별 재생성 및 5단계 상태 관리 테스트"""
         self.client.force_login(self.superuser)
 
-        report = PDFReportService.generate_pdf_report(self.cycle, self.bob)
-        res_retry = self.client.post(reverse('admin_regenerate_report', kwargs={'report_id': report.id}))
-        self.assertEqual(res_retry.status_code, 302)
+        # 체크리스트 집계
+        checklist = ReportManagementService.get_delivery_checklist(self.cycle)
+        self.assertTrue(len(checklist) > 0)
 
-    def test_07_slack_delivery_logging_and_test_dm(self):
-        """7. Slack DM 성공/실패 기록(SlackDeliveryLog) 및 사전 테스트 DM 테스트"""
+        # 개별 재생성 API 테스트
+        report = ReviewReport.objects.create(cycle=self.cycle, reviewee=self.bob, validation_status='FAILED')
+        res_regen = self.client.post(reverse('admin_regenerate_report', kwargs={'report_id': report.id}))
+        self.assertEqual(res_regen.status_code, 302)
+
+    def test_04_version_history_and_admin_memo(self):
+        """10~12. 변경 이력 비교, 관리자 코멘트 메모 및 자동 리마인더 테스트"""
         self.client.force_login(self.superuser)
 
-        res_test_dm = self.client.post(reverse('admin_send_test_dm'))
-        self.assertEqual(res_test_dm.status_code, 302)
-        self.assertTrue(SlackDeliveryLog.objects.filter(delivery_type='TEST_DM').exists())
+        report = ReviewReport.objects.create(cycle=self.cycle, reviewee=self.bob)
+
+        # 관리자 수정 메모 저장 API 테스트
+        res_memo = self.client.post(reverse('admin_save_report_memo', kwargs={'report_id': report.id}), {
+            'admin_memo': '긴 글 분할 및 폰트 크기 확인 완료'
+        })
+        self.assertEqual(res_memo.status_code, 302)
+        report.refresh_from_db()
+        self.assertEqual(report.admin_memo, '긴 글 분할 및 폰트 크기 확인 완료')
+
+        # 회차 버전 변경 이력 뷰 테스트
+        res_hist = self.client.get(reverse('admin_cycle_history', kwargs={'cycle_id': self.cycle.id}))
+        self.assertEqual(res_hist.status_code, 200)

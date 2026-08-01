@@ -8,12 +8,15 @@ import os
 
 from core.models import (
     Member, ReviewCycle, ReviewQuestion, QuestionOption,
-    ReviewAssignment, ReviewAuthCode, ReviewReport, DataValidationLog, SlackDeliveryLog
+    ReviewAssignment, ReviewAuthCode, ReviewReport, DataValidationLog, SlackDeliveryLog,
+    ReviewCycleVersionLog
 )
 from core.services.slack_service import SlackService
 from core.services.pdf_service import PDFReportService
 from core.services.ppt_service import PPTReportService
 from core.services.validation_service import DataValidationService
+from core.services.layout_service import LayoutCheckService
+from core.services.report_service import ReportManagementService
 
 
 def superuser_required(view_func):
@@ -77,6 +80,12 @@ def admin_create_cycle(request):
             end_at=end_at,
             status='DRAFT'
         )
+        ReviewCycleVersionLog.objects.create(
+            cycle=cycle,
+            version=cycle.version,
+            changed_summary=f"신규 피어리뷰 회차 '{cycle.title}' (버전: {cycle.version}) 생성됨."
+        )
+
         messages.success(request, f"신규 피어리뷰 회차 '{cycle.title}'가 성공적으로 생성되었습니다!")
         return redirect('admin_questions', cycle_id=cycle.id)
 
@@ -157,7 +166,7 @@ def admin_upload_excel(request, cycle_id):
         cycle = get_object_or_404(ReviewCycle, id=cycle_id)
         excel_file = request.FILES['excel_file']
         logs = DataValidationService.validate_excel_data(excel_file, cycle)
-        messages.success(request, f"엑셀 파일 검증 완료! 총 {len(logs)}건의 검증 항목이 발견되었습니다.")
+        messages.success(request, f"엑셀 사전 검증 완료! 총 {len(logs)}건의 입력 이슈(이름 누락, 중복/대소문자 불일치, 팀/역할 누락)가 감지되었습니다.")
     return redirect('admin_validation')
 
 
@@ -196,7 +205,6 @@ def admin_add_question(request, cycle_id):
     if request.method == 'POST':
         cycle = get_object_or_404(ReviewCycle, id=cycle_id)
 
-        # 질문지 수정 시점 제한: ACTIVE 시작 후 문항 변경 차단
         if cycle.is_question_locked:
             messages.error(request, "피어리뷰가 이미 시작(ACTIVE)되거나 완료된 상태에서는 질문 문항을 추가할 수 없습니다.")
             return redirect('admin_questions', cycle_id=cycle_id)
@@ -457,15 +465,16 @@ def admin_generate_reports_action(request, cycle_id):
         reviewees = set(a.reviewee for a in cycle.assignments.all())
         for rev in reviewees:
             PPTReportService.generate_ppt_report(cycle, rev)
+            LayoutCheckService.check_layout_overflow(cycle, rev)
 
-        messages.success(request, f"총 {len(pdf_reports)}건의 PDF 및 PPT 리포트가 성공적으로 생성되었습니다!")
+        messages.success(request, f"총 {len(pdf_reports)}건의 PDF/PPT 리포트 및 자동 레이아웃 검수가 완료되었습니다!")
         return redirect('admin_reports', cycle_id=cycle_id)
 
     return redirect('admin_status')
 
 
 # ==========================================
-# 6. PAGE 6: 리포트 검토 & PPT/버전 관리 (a-reports)
+# 6. ⭐ PAGE 6: 리포트 검토 & PPT/버전 관리 (a-reports)
 # ==========================================
 @superuser_required
 def admin_reports(request, cycle_id):
@@ -476,6 +485,7 @@ def admin_reports(request, cycle_id):
         reviewees = set(a.reviewee for a in cycle.assignments.all())
         for rev in reviewees:
             PPTReportService.generate_ppt_report(cycle, rev)
+            LayoutCheckService.check_layout_overflow(cycle, rev)
         if cycle.status == 'ACTIVE':
             cycle.status = 'COMPLETED'
             cycle.save()
@@ -492,6 +502,9 @@ def admin_reports(request, cycle_id):
             'ppt_file': r.ppt_file,
             'is_sent': r.is_sent,
             'validation_status': r.get_validation_status_display(),
+            'admin_memo': r.admin_memo,
+            'layout_check_passed': r.layout_check_passed,
+            'layout_issue_notes': r.layout_issue_notes,
             'version': r.version,
             'error_log': r.error_log,
             'created_at': r.created_at,
@@ -506,13 +519,59 @@ def admin_reports(request, cycle_id):
 
 
 @superuser_required
+def admin_save_report_memo(request, report_id):
+    """리포트 검토 코멘트/수정 메모 저장 API"""
+    if request.method == 'POST':
+        report = get_object_or_404(ReviewReport, id=report_id)
+        memo = request.POST.get('admin_memo', '').strip()
+        report.admin_memo = memo
+        report.save()
+        messages.success(request, f"'{report.reviewee.name}' 님 리포트에 관리자 메모가 저장되었습니다.")
+        return redirect('admin_reports', cycle_id=report.cycle.id)
+
+    return redirect('admin_dashboard')
+
+
+@superuser_required
+def admin_generate_sample_reports(request, cycle_id):
+    """실제 발송 전 샘플 2~3명 리포트 테스트 모드 전용 생성"""
+    if request.method == 'POST':
+        cycle = get_object_or_404(ReviewCycle, id=cycle_id)
+        reports = ReportManagementService.generate_sample_reports(cycle, sample_count=3)
+        messages.success(request, f"샘플 {len(reports)}명에 대한 테스트 리포트(PDF/PPT)가 성공적으로 생성되었습니다!")
+        return redirect('admin_reports', cycle_id=cycle_id)
+
+    return redirect('admin_dashboard')
+
+
+@superuser_required
+def admin_run_layout_check(request, cycle_id):
+    """자동 레이아웃 검수 일괄 실행"""
+    if request.method == 'POST':
+        cycle = get_object_or_404(ReviewCycle, id=cycle_id)
+        reviewees = set(a.reviewee for a in cycle.assignments.all())
+
+        passed_count = 0
+        for rev in reviewees:
+            rep = LayoutCheckService.check_layout_overflow(cycle, rev)
+            if rep.layout_check_passed:
+                passed_count += 1
+
+        messages.success(request, f"자동 레이아웃 검수 완료! (총 {len(reviewees)}명 중 {passed_count}명 통과)")
+        return redirect('admin_reports', cycle_id=cycle_id)
+
+    return redirect('admin_dashboard')
+
+
+@superuser_required
 def admin_regenerate_report(request, report_id):
-    """1클릭 PDF/PPT 실패 리포트 재시도"""
+    """1클릭 개별 리포트(PDF/PPT) 재시도 및 재생성"""
     if request.method == 'POST':
         report = get_object_or_404(ReviewReport, id=report_id)
         PDFReportService.generate_pdf_report(report.cycle, report.reviewee)
         PPTReportService.generate_ppt_report(report.cycle, report.reviewee)
-        messages.success(request, f"'{report.reviewee.name}' 님의 리포트(PDF/PPT)가 재시도/재생성 되었습니다.")
+        LayoutCheckService.check_layout_overflow(report.cycle, report.reviewee)
+        messages.success(request, f"'{report.reviewee.name}' 님의 리포트(PDF/PPT)가 재생성 되었습니다.")
         return redirect('admin_reports', cycle_id=report.cycle.id)
 
     return redirect('admin_dashboard')
@@ -551,7 +610,7 @@ def admin_publish_reports_action(request, cycle_id):
 
 
 # ==========================================
-# 7. PAGE 7: Slack DM 전송, 실패 재전송 & 테스트 DM (a-messages)
+# 7. PAGE 7: Slack DM 전송, 발송 체크리스트 & 테스트 DM (a-messages)
 # ==========================================
 @superuser_required
 def admin_send_message(request):
@@ -586,15 +645,41 @@ def admin_send_message(request):
 
 
 @superuser_required
+def admin_delivery_checklist(request, cycle_id):
+    """발송 전 이름 / 팀 / Slack ID / PDF 존재 여부 / 승인 여부 체크리스트"""
+    cycle = get_object_or_404(ReviewCycle, id=cycle_id)
+    checklist = ReportManagementService.get_delivery_checklist(cycle)
+
+    return render(request, 'admin_custom/reports.html', {
+        'cycle': cycle,
+        'checklist': checklist,
+        'active_menu': 'dashboard',
+    })
+
+
+@superuser_required
+def admin_cycle_history(request, cycle_id):
+    """문항 및 템플릿 버전(v1 -> v2) 변경 이력 비교 조회"""
+    cycle = get_object_or_404(ReviewCycle, id=cycle_id)
+    version_logs = cycle.version_logs.all()
+
+    return render(request, 'admin_custom/dashboard.html', {
+        'cycle': cycle,
+        'version_logs': version_logs,
+        'active_menu': 'dashboard',
+    })
+
+
+@superuser_required
 def admin_retry_failed_messages(request):
-    """실패한 Slack DM 건만 1클릭 전원 재발송"""
+    """실패했던 Slack DM 건 1클릭 전원 재발송"""
     if request.method == 'POST':
         failed_logs = SlackDeliveryLog.objects.filter(is_success=False)
         slack = SlackService()
         retried_count = 0
 
         for log in failed_logs:
-            success, _ = slack.send_failed_reminders_retry(log.member, log.message_content)
+            success, _ = slack.send_failed_reminders_retry(log.member, log.message_content, log.cycle)
             if success:
                 log.is_success = True
                 log.save()
@@ -609,8 +694,6 @@ def admin_send_test_dm(request):
     """전체 발송 전 관리자 본인에게 테스트 DM 전송"""
     if request.method == 'POST':
         slack = SlackService()
-
-        # 현재 로그인한 관리자 Member 객체 찾기 (없으면 첫 번째 관리자)
         admin_member = Member.objects.filter(email=request.user.email).first()
         if not admin_member:
             admin_member = Member.objects.filter(role='ADMIN').first() or Member.objects.first()

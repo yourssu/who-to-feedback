@@ -82,6 +82,18 @@ class ReviewCycle(models.Model):
         return self.status != 'DRAFT'
 
 
+class ReviewCycleVersionLog(models.Model):
+    cycle = models.ForeignKey(ReviewCycle, on_delete=models.CASCADE, related_name='version_logs', verbose_name="리뷰 회차")
+    version = models.CharField(max_length=10, verbose_name="버전")
+    changed_summary = models.TextField(verbose_name="변경 이력 내용 (문항/템플릿)")
+    created_at = models.DateTimeField(default=timezone.now, verbose_name="기록일시")
+
+    class Meta:
+        verbose_name = "회차 버전 변경 이력"
+        verbose_name_plural = "회차 버전 변경 이력 목록"
+        ordering = ['-created_at']
+
+
 class ReviewQuestion(models.Model):
     TYPE_CHOICES = [
         ('RATING', '5점 척도 평가'),
@@ -180,8 +192,10 @@ class ReviewAnswer(models.Model):
 
 class ReviewReport(models.Model):
     VALIDATION_STATUS_CHOICES = [
-        ('APPROVED', '승인 완료'),
+        ('GENERATED', '생성 완료'),
         ('NEEDS_REVIEW', '검토 필요'),
+        ('APPROVED', '승인 완료'),
+        ('SENT', '발송 완료'),
         ('FAILED', '생성 실패'),
     ]
 
@@ -191,6 +205,9 @@ class ReviewReport(models.Model):
     ppt_file = models.FileField(upload_to='reports_ppt/', null=True, blank=True, verbose_name="PPT 리포트 파일")
     version = models.CharField(max_length=10, default="v1", verbose_name="리포트 템플릿 버전")
     validation_status = models.CharField(max_length=20, choices=VALIDATION_STATUS_CHOICES, default='NEEDS_REVIEW', verbose_name="검수 상태")
+    admin_memo = models.TextField(blank=True, verbose_name="관리자 수정 메모/코멘트")
+    layout_check_passed = models.BooleanField(default=True, verbose_name="자동 레이아웃 검수 통과 여부")
+    layout_issue_notes = models.TextField(blank=True, verbose_name="레이아웃 검수 이슈 노트")
     error_log = models.TextField(blank=True, verbose_name="생성 오류 로그")
     created_at = models.DateTimeField(default=timezone.now, verbose_name="생성일시")
     is_sent = models.BooleanField(default=False, verbose_name="Slack DM 발송 여부")

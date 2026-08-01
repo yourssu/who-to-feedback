@@ -16,6 +16,7 @@ urlpatterns = [
     # ==========================================
     path('admin-panel/', admin_views.admin_dashboard, name='admin_dashboard'),
     path('admin-panel/cycles/create/', admin_views.admin_create_cycle, name='admin_create_cycle'),
+    path('admin-panel/cycles/<int:cycle_id>/history/', admin_views.admin_cycle_history, name='admin_cycle_history'),
 
     # PAGE 1: 팀원 관리
     path('admin-panel/members/', admin_views.admin_members, name='admin_members'),
@@ -47,9 +48,13 @@ urlpatterns = [
     path('admin-panel/cycles/<int:cycle_id>/reminder/', admin_views.admin_send_reminder_action, name='admin_send_reminder_action'),
     path('admin-panel/cycles/<int:cycle_id>/generate-reports/', admin_views.admin_generate_reports_action, name='admin_generate_reports_action'),
 
-    # PAGE 6: HTML & PDF / PPT 결과 검토 및 1클릭 재시도
+    # PAGE 6: HTML & PDF / PPT 결과 검토 및 1클릭 개별 재생성, 메모, 레이아웃 검수, 샘플 모드
     path('admin-panel/cycles/<int:cycle_id>/reports/', admin_views.admin_reports, name='admin_reports'),
     path('admin-panel/reports/<int:report_id>/regenerate/', admin_views.admin_regenerate_report, name='admin_regenerate_report'),
+    path('admin-panel/reports/<int:report_id>/memo/', admin_views.admin_save_report_memo, name='admin_save_report_memo'),
+    path('admin-panel/cycles/<int:cycle_id>/sample-reports/', admin_views.admin_generate_sample_reports, name='admin_generate_sample_reports'),
+    path('admin-panel/cycles/<int:cycle_id>/layout-check/', admin_views.admin_run_layout_check, name='admin_run_layout_check'),
+    path('admin-panel/cycles/<int:cycle_id>/checklist/', admin_views.admin_delivery_checklist, name='admin_delivery_checklist'),
     path('admin-panel/cycles/<int:cycle_id>/publish/', admin_views.admin_publish_reports_action, name='admin_publish_reports_action'),
 
     # PAGE 7: Slack DM 전송, 실패 재전송 & 사전 테스트 DM
