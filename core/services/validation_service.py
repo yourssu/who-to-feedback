@@ -148,18 +148,10 @@ class DataValidationService:
             dept = get_col(row, 'department', 'dept', '소속부서', '부서', '팀')
             role_raw = get_col(row, 'role', '역할', '권한').upper()
 
-            if not name:
-                continue
-
-            # 이메일이 없을 때 가상 이메일 생성
-            if not email:
-                norm_prefix = "".join(ch for ch in unicodedata.normalize('NFKC', name).lower() if ch.isalnum())
-                email = f"{norm_prefix or 'user'}@yourssu.com"
-
             role = 'ADMIN' if role_raw in ['ADMIN', '관리자', 'SUPERUSER'] else 'MEMBER'
             norm_name = unicodedata.normalize('NFKC', name).casefold()
 
-            member, created = Member.objects.update_or_create(
+            created = Member.objects.update_or_create(
                 email=email,
                 defaults={
                     'name': name,
