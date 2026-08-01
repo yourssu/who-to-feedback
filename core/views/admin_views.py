@@ -354,7 +354,7 @@ def admin_auto_match(request, cycle_id):
                     if created:
                         created_count += 1
 
-        messages.success(request, f"총 {created_count}건의 360도 피어리뷰 매칭이 성공적으로 생성되었습니다!")
+        messages.success(request, f"총 {created_count}건의 피어리뷰 매칭이 성공적으로 생성되었습니다!")
         return redirect('admin_assignments', cycle_id=cycle_id)
 
     return redirect('admin_dashboard')
