@@ -216,15 +216,22 @@ class PDFReportService:
             answers = ReviewAnswer.objects.filter(assignment__in=assignments, question=q, is_excluded_from_report=False)
             keys = [f'q_{idx}_', f'q_{q.order}_']
 
+            q_image_url = q.image.url if q.image else ""
+            q_image_path = q.image.path if q.image and os.path.exists(q.image.path) else ""
+
             for k in set(keys):
                 context[f'{k}content'] = q.content
                 context[f'{k}type'] = q.question_type
                 context[f'{k}category'] = q.category or "기본 역량"
+                context[f'{k}image_url'] = q_image_url
+                context[f'{k}image_path'] = q_image_path
 
             q_data = {
                 'order': q.order,
                 'content': q.content,
                 'category': q.category or "기본 역량",
+                'image_url': q_image_url,
+                'image_path': q_image_path,
                 'question_type': q.question_type,
                 'avg_rating': 0,
                 'avg_rating_label': '0.0점',
@@ -374,8 +381,44 @@ class PDFReportService:
             filename = f"peer_review_{cycle.id}_{reviewee.id}.pdf"
             full_path = os.path.join(output_dir, filename)
 
-            with open(full_path, 'wb') as pdf_file:
-                pisa.CreatePDF(html_content, dest=pdf_file)
+            # Playwright + Pillow 기반 100% 픽셀 일치 PNG 캡처 (6K UHD 6144x3456 초고해상도) ➔ 16:9 와이드 PDF 병합 파이프라인
+            pdf_generated_by_playwright = False
+            try:
+                from playwright.sync_api import sync_playwright
+                from PIL import Image
+
+                with sync_playwright() as p:
+                    browser = p.chromium.launch(headless=True)
+                    page = browser.new_page(
+                        viewport={"width": 6144, "height": 3456},
+                        device_scale_factor=2
+                    )
+                    page.set_content(html_content, wait_until="networkidle")
+
+                    slide_elements = page.query_selector_all('.slide')
+                    png_images = []
+
+                    if slide_elements:
+                        for idx, slide_el in enumerate(slide_elements):
+                            png_bytes = slide_el.screenshot(type="png")
+                            img = Image.open(io.BytesIO(png_bytes)).convert('RGB')
+                            png_images.append(img)
+                    else:
+                        png_bytes = page.screenshot(type="png", full_page=True)
+                        img = Image.open(io.BytesIO(png_bytes)).convert('RGB')
+                        png_images.append(img)
+
+                    browser.close()
+
+                    if png_images:
+                        png_images[0].save(full_path, save_all=True, append_images=png_images[1:], resolution=600.0)
+                        pdf_generated_by_playwright = True
+            except Exception as pw_err:
+                pdf_generated_by_playwright = False
+
+            if not pdf_generated_by_playwright:
+                with open(full_path, 'wb') as pdf_file:
+                    pisa.CreatePDF(html_content, dest=pdf_file)
 
             report.pdf_file.name = f"reports_pdf/{filename}"
             report.validation_status = 'APPROVED'

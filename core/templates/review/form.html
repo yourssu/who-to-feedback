@@ -20,6 +20,11 @@
     {% if forloop.first %}<a class="r-back" href="{% url 'review_dashboard' %}">‹&nbsp;&nbsp;대시보드</a>{% else %}<button class="r-back btn-ghost" type="button" data-wizard-prev>‹&nbsp;&nbsp;이전 질문</button>{% endif %}
     <p class="question-kicker">{{ forloop.counter }} / {{ questions_data|length }} · {{ item.question.question_type }}</p>
     <h2 class="question-title">{{ item.question.content }}</h2>
+    {% if item.question.image %}
+    <div class="question-image-box" style="margin: 12px 0 16px 0;">
+      <img src="{{ item.question.image.url }}" alt="질문 첨부 이미지" style="max-width: 100%; max-height: 280px; border-radius: 8px; border: 1px solid rgba(0, 0, 0, 0.08); object-fit: contain;">
+    </div>
+    {% endif %}
     {% if item.question.question_type == 'RATING' %}
     <p class="r-help">관리자 설정에 따라 숫자 1–5 또는 텍스트 5단계 라벨이 표시됩니다.</p>
     <div class="score-grid">

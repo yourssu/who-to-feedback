@@ -1,3 +1,4 @@
+import re
 import openpyxl
 import difflib
 from core.models import Member, ReviewAssignment, ReviewAnswer, DataValidationLog
@@ -148,14 +149,23 @@ class DataValidationService:
             dept = get_col(row, 'department', 'dept', '소속부서', '부서', '팀')
             role_raw = get_col(row, 'role', '역할', '권한').upper()
 
+            # 이메일이 없을 때 가상 이메일 생성
+            if not email:
+                norm_prefix = "".join(ch for ch in unicodedata.normalize('NFKC', name).lower() if ch.isalnum())
+                email = f"{norm_prefix or 'user'}@yourssu.com"
+
+            # slack_user_id가 올바른 형식(U/W/D + 8~14자리 알파벳/숫자)이 아니면 빈값으로 두어 SlackService 자동 룩업에 맡김
+            valid_id_regex = re.compile(r'^[UWD][A-Z0-9]{8,14}$')
+            final_slack_id = slack_id if valid_id_regex.match(slack_id) else ""
+
             role = 'ADMIN' if role_raw in ['ADMIN', '관리자', 'SUPERUSER'] else 'MEMBER'
             norm_name = unicodedata.normalize('NFKC', name).casefold()
 
-            created = Member.objects.update_or_create(
+            member, created = Member.objects.update_or_create(
                 email=email,
                 defaults={
                     'name': name,
-                    'slack_user_id': slack_id or f"U_{norm_name[:10]}",
+                    'slack_user_id': final_slack_id,
                     'department': dept or "일반",
                     'role': role,
                     'normalized_name': norm_name,

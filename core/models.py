@@ -36,14 +36,19 @@ class ReviewCycle(models.Model):
     ]
 
     title = models.CharField(max_length=200, verbose_name="피어리뷰 회차명")
-    start_at = models.DateTimeField(verbose_name="시작 일시")
-    end_at = models.DateTimeField(verbose_name="마감 일시")
+    start_at = models.DateTimeField(null=True, blank=True, verbose_name="시작 일시")
+    end_at = models.DateTimeField(null=True, blank=True, verbose_name="마감 일시")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='DRAFT', verbose_name="진행 상태")
     auto_reminder_enabled = models.BooleanField(default=True, verbose_name="자동 리마인더 활성화")
     auto_reminder_time = models.TimeField(default="10:00", verbose_name="자동 리마인더 시각")
     version = models.CharField(max_length=10, default="v1", verbose_name="템플릿/문항 버전")
     custom_html_file = models.FileField(upload_to='custom_templates/', null=True, blank=True, verbose_name="커스텀 HTML 결과지 템플릿 파일")
     use_custom_template = models.BooleanField(default=False, verbose_name="커스텀 HTML 템플릿 적용 여부")
+    reviewer_notice_message = models.TextField(
+        blank=True,
+        default="본인에게 배정된 리뷰만 표시되며 관리자 기능에는 접근할 수 없습니다.",
+        verbose_name="사용자 대시보드 공지/안내 메시지"
+    )
     created_at = models.DateTimeField(default=timezone.now, verbose_name="생성일시")
 
     class Meta:
@@ -76,7 +81,12 @@ class ReviewCycle(models.Model):
 
     @property
     def is_deadline_passed(self):
-        return timezone.now() > self.end_at
+        """시간 입력 대신 관리자가 직접 마감/종료(COMPLETED/CLOSED) 버튼을 눌렀는지 여부 기준"""
+        if self.status in ['COMPLETED', 'CLOSED']:
+            return True
+        if self.end_at and timezone.now() > self.end_at:
+            return True
+        return False
 
     @property
     def is_question_locked(self):
@@ -114,6 +124,7 @@ class ReviewQuestion(models.Model):
     question_type = models.CharField(max_length=20, choices=TYPE_CHOICES, verbose_name="문항 유형")
     scale_type = models.CharField(max_length=20, choices=SCALE_CHOICES, default='NUMERIC_5', verbose_name="척도 라벨 유형")
     category = models.CharField(max_length=100, blank=True, default="기본 역량", verbose_name="관리자 전용 카테고리 (예: Active Ownership)")
+    image = models.ImageField(upload_to='question_images/', null=True, blank=True, verbose_name="질문 첨부 이미지")
     content = models.TextField(verbose_name="문항 내용/질문")
 
     class Meta:

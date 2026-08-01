@@ -71,14 +71,19 @@ def admin_dashboard(request):
 def admin_create_cycle(request):
     if request.method == 'POST':
         title = request.POST.get('title')
-        start_at = request.POST.get('start_at')
-        end_at = request.POST.get('end_at')
+        start_at_raw = request.POST.get('start_at')
+        end_at_raw = request.POST.get('end_at')
+        reviewer_notice = request.POST.get('reviewer_notice_message', '').strip()
+
+        start_at = start_at_raw if start_at_raw else None
+        end_at = end_at_raw if end_at_raw else None
 
         cycle = ReviewCycle.objects.create(
             title=title,
             start_at=start_at,
             end_at=end_at,
-            status='DRAFT'
+            status='DRAFT',
+            reviewer_notice_message=reviewer_notice or "본인에게 배정된 리뷰만 표시되며 관리자 기능에는 접근할 수 없습니다."
         )
         ReviewCycleVersionLog.objects.create(
             cycle=cycle,
@@ -89,6 +94,19 @@ def admin_create_cycle(request):
         messages.success(request, f"신규 피어리뷰 회차 '{cycle.title}'가 성공적으로 생성되었습니다!")
         return redirect('admin_questions', cycle_id=cycle.id)
 
+    return redirect('admin_dashboard')
+
+
+@superuser_required
+def admin_update_reviewer_notice(request, cycle_id):
+    """사용자 대시보드 공지/안내 메시지 수정 API"""
+    if request.method == 'POST':
+        cycle = get_object_or_404(ReviewCycle, id=cycle_id)
+        notice = request.POST.get('reviewer_notice_message', '').strip()
+        if notice:
+            cycle.reviewer_notice_message = notice
+            cycle.save()
+            messages.success(request, f"[{cycle.title}] 회차의 사용자 대시보드 공지 메시지가 업데이트되었습니다.")
     return redirect('admin_dashboard')
 
 
@@ -214,6 +232,7 @@ def admin_add_question(request, cycle_id):
         scale_type = request.POST.get('scale_type', 'NUMERIC_5')
         category = request.POST.get('category', '기본 역량').strip() or '기본 역량'
         content = request.POST.get('content')
+        image = request.FILES.get('image')
 
         ReviewQuestion.objects.create(
             cycle=cycle,
@@ -221,6 +240,7 @@ def admin_add_question(request, cycle_id):
             question_type=question_type,
             scale_type=scale_type,
             category=category,
+            image=image,
             content=content
         )
         messages.success(request, f"신규 질문 문항이 추가되었습니다. (카테고리: {category})")
@@ -410,6 +430,8 @@ def admin_start_cycle_action(request, cycle_id):
     if request.method == 'POST':
         cycle = get_object_or_404(ReviewCycle, id=cycle_id)
         cycle.status = 'ACTIVE'
+        if not cycle.start_at:
+            cycle.start_at = timezone.now()
         cycle.save()
 
         slack = SlackService()
@@ -426,6 +448,27 @@ def admin_start_cycle_action(request, cycle_id):
         return redirect('admin_status_detail', cycle_id=cycle_id)
 
     return redirect('admin_status')
+
+
+@superuser_required
+def admin_close_cycle_action(request, cycle_id):
+    """관리자가 직접 수동 마감/종료하는 API"""
+    if request.method == 'POST':
+        cycle = get_object_or_404(ReviewCycle, id=cycle_id)
+        cycle.status = 'COMPLETED'
+        cycle.end_at = timezone.now()
+        cycle.save()
+
+        pdf_reports = PDFReportService.generate_all_reports_for_cycle(cycle)
+        reviewees = set(a.reviewee for a in cycle.assignments.all())
+        for rev in reviewees:
+            PPTReportService.generate_ppt_report(cycle, rev)
+            LayoutCheckService.check_layout_overflow(cycle, rev)
+
+        messages.success(request, f"[{cycle.title}] 회차가 관리자에 의해 마감/종료되었습니다. 리포트 생성이 완료되었습니다.")
+        return redirect('admin_reports', cycle_id=cycle_id)
+
+    return redirect('admin_status_detail', cycle_id=cycle_id)
 
 
 @superuser_required
@@ -563,6 +606,26 @@ def admin_run_layout_check(request, cycle_id):
         return redirect('admin_reports', cycle_id=cycle_id)
 
     return redirect('admin_dashboard')
+
+
+@superuser_required
+def admin_preview_report_html(request, report_id):
+    """관리자 검토용 HTML 웹 원본 동적 미리보기 API (0% 깨짐 웹 원본)"""
+    from django.template import Template, Context
+    from django.template.loader import render_to_string
+
+    report = get_object_or_404(ReviewReport, id=report_id)
+    context = PDFReportService.compile_feedback_data(report.cycle, report.reviewee)
+
+    if report.cycle.use_custom_template and report.cycle.custom_html_file and os.path.exists(report.cycle.custom_html_file.path):
+        with open(report.cycle.custom_html_file.path, 'r', encoding='utf-8') as f:
+            template_src = f.read()
+        template = Template(template_src)
+        html_content = template.render(Context(context))
+    else:
+        html_content = render_to_string('reports/peer_review_report.html', context)
+
+    return HttpResponse(html_content, content_type='text/html; charset=utf-8')
 
 
 @superuser_required

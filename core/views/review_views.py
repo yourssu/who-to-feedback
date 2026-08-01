@@ -37,13 +37,20 @@ def review_dashboard(request):
 
     days_left = (cycle.end_at - timezone.now()).days if cycle.end_at > timezone.now() else 0
 
-    # 템플릿 (dashboard.html) 호환용 딕셔너리 래핑: item.assignment.id, item.assignment.reviewee
-    assignments = [{'assignment': a} for a in raw_assignments]
+    # 템플릿 (dashboard.html) 호환용: item.id, item.reviewee, item.is_submitted 및 item.assignment 모두 지원
+    assignments = []
+    for a in raw_assignments:
+        setattr(a, 'assignment', a)
+        assignments.append(a)
+
+    unsubmitted_assignments = [a for a in assignments if not a.is_submitted]
+    first_unsubmitted_id = unsubmitted_assignments[0].id if unsubmitted_assignments else (assignments[0].id if assignments else None)
 
     return render(request, 'review/dashboard.html', {
         'reviewer': reviewer,
         'cycle': cycle,
         'assignments': assignments,
+        'first_unsubmitted_id': first_unsubmitted_id,
         'total_count': total_count,
         'completed_count': completed_count,
         'submitted_count': completed_count,

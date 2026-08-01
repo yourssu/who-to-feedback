@@ -184,16 +184,28 @@
 
 ---
 
-### 12) 질문지 제작 모달 내 관리자 카테고리 필드 추가 - `admin_custom/questions.html`
-- **목적**: 5점 척도/주관식 문항 생성 시 관리자 전용 역량 카테고리 (예: Active Ownership, Deep Immersion, Mutual Growth) 지정.
-- **백엔드 API**: `POST /admin-panel/cycles/<cycle_id>/questions/add/` (파라미터: `category`)
+### 12) 질문지 제작 모달 내 관리자 카테고리 & 질문 첨부 이미지 필드 - `admin_custom/questions.html`
+- **목적**: 5점 척도/주관식/선택형 문항 생성 시 관리자 역량 카테고리 지정 및 질문 전용 첨부 이미지 파일 업로드.
+- **백엔드 API**: `POST /admin-panel/cycles/<cycle_id>/questions/add/` (`enctype="multipart/form-data"`, 파라미터: `category`, `image`)
 - **HTML 구현 예시**:
   ```html
-  <div class="form-group my-2">
-      <label>관리자 역량 카테고리</label>
-      <input type="text" name="category" class="form-control" placeholder="예: Active Ownership, 소통역량" value="기본 역량">
-      <small class="form-text text-muted">방사형/원/막대 그래프 생성을 위해 관리자가 문항별로 지정하는 역량 구분입니다.</small>
-  </div>
+  <form method="POST" action="{% url 'admin_add_question' cycle_id=cycle.id %}" enctype="multipart/form-data">
+      {% csrf_token %}
+      <!-- 관리자 역량 카테고리 -->
+      <div class="form-group my-2">
+          <label>관리자 역량 카테고리</label>
+          <input type="text" name="category" class="form-control" placeholder="예: Active Ownership, 소통역량" value="기본 역량">
+      </div>
+
+      <!-- 질문 첨부 이미지 업로드 -->
+      <div class="form-group my-2">
+          <label>질문 첨부 이미지 (선택)</label>
+          <input type="file" name="image" accept="image/*" class="form-control">
+          <small class="form-text text-muted">질문 내용 상단에 표출되는 이미지입니다 (답변에는 포함되지 않습니다).</small>
+      </div>
+
+      <button type="submit" class="btn btn-primary">질문 생성</button>
+  </form>
   ```
 
 ---

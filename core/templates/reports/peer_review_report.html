@@ -1,153 +1,500 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <title>{{ reviewee.name }} 님 피어리뷰 결과 리포트</title>
-    <style>
-        @page {
-            size: A4 portrait;
-            margin: 2cm;
-        }
-        body {
-            font-family: 'Pretendard', sans-serif, 'Malgun Gothic', 'Apple SD Gothic Neo';
-            color: #1F2937;
-            line-height: 1.6;
-        }
-        .header {
-            text-align: center;
-            border-bottom: 2px solid #4F46E5;
-            padding-bottom: 15px;
-            margin-bottom: 30px;
-        }
-        .header h1 {
-            color: #4F46E5;
-            font-size: 22pt;
-            margin: 0 0 5px 0;
-        }
-        .header p {
-            color: #4B5563;
-            font-size: 11pt;
-            margin: 0;
-        }
-        .summary-box {
-            background-color: #EEF2FF;
-            border-left: 4px solid #4F46E5;
-            padding: 15px;
-            margin-bottom: 30px;
-            border-radius: 4px;
-        }
-        .summary-box td {
-            font-size: 11pt;
-        }
-        .question-section {
-            margin-bottom: 25px;
-            page-break-inside: avoid;
-        }
-        .question-title {
-            font-size: 13pt;
-            font-weight: bold;
-            color: #111827;
-            background-color: #F3F4F6;
-            padding: 8px 12px;
-            border-radius: 4px;
-            margin-bottom: 12px;
-        }
-        .rating-badge {
-            display: inline-block;
-            background-color: #4F46E5;
-            color: #ffffff;
-            font-size: 14pt;
-            font-weight: bold;
-            padding: 6px 15px;
-            border-radius: 20px;
-            margin-top: 5px;
-        }
-        .feedback-card {
-            background-color: #F9FAFB;
-            border: 1px solid #E5E7EB;
-            padding: 12px 15px;
-            margin-bottom: 10px;
-            border-radius: 6px;
-            font-size: 10.5pt;
-        }
-        .tag-chip {
-            display: inline-block;
-            background-color: #E0E7FF;
-            color: #3730A3;
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-size: 9.5pt;
-            font-weight: bold;
-            margin-right: 5px;
-            margin-bottom: 5px;
-        }
-        .footer-note {
-            margin-top: 40px;
-            text-align: center;
-            font-size: 9pt;
-            color: #9CA3AF;
-            border-top: 1px solid #E5E7EB;
-            padding-top: 15px;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{ reviewee.name }} 님 YOURSSU 피어리뷰 결과 리포트</title>
+<style>
+/* ============================================================
+   FONT & BRAND SYSTEM — Wanted Sans / KoreanPDF
+   ============================================================ */
+@font-face {
+  font-family: "Wanted Sans";
+  src: url("{{ font_path }}") format("truetype");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: block;
+}
+
+:root {
+  --primary: #2b2d6e;
+  --primary-deep: #1f2152;
+  --periwinkle: #8b7ce8;
+  --gold: #c99410;
+  --canvas: #ffffff;
+  --surface: #f7f6fd;
+  --wash: #ece9fb;
+  --hairline: #e3e0f5;
+  --ink: #23244d;
+  --ink-strong: #1a1b3d;
+  --slate: #63648c;
+  --steel: #8b8cad;
+  --page-w: 1280px;
+  --page-h: 720px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 0;
+  background: #ffffff;
+  color: var(--ink);
+  font-family: "Wanted Sans", "Pretendard", sans-serif !important;
+  font-synthesis: none;
+  letter-spacing: 0;
+}
+
+/* 16:9 Widescreen PPT Slide (1280px x 720px / 6K Ultra HD Scalable) */
+@page {
+  size: 297mm 167mm;
+  margin: 0;
+}
+
+.slide {
+  position: relative;
+  width: var(--page-w);
+  height: var(--page-h);
+  overflow: hidden;
+  background: var(--canvas);
+  page-break-after: always;
+  break-after: page;
+}
+
+.lavender-page { background: var(--wash); }
+
+.page-footer {
+  position: absolute;
+  left: 60px; right: 60px; bottom: 28px;
+  height: 24px;
+  border-top: 1px solid var(--hairline);
+  padding-top: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--steel);
+  font-size: 11px; line-height: 1;
+}
+
+.page-heading {
+  position: absolute;
+  left: 60px; right: 60px; top: 48px;
+}
+
+.eyebrow, .metric-kicker, .cover-kicker {
+  color: var(--primary);
+  font-size: 14px; line-height: 1.2;
+  font-weight: 700; letter-spacing: 1.6px;
+}
+
+.page-heading h2 {
+  margin: 18px 0 0;
+  color: var(--ink-strong);
+  font-size: 32px; line-height: 1.14; font-weight: 750;
+}
+
+.heading-subtitle {
+  margin: 10px 0 0;
+  color: var(--periwinkle);
+  font-size: 18px; line-height: 1.2; font-weight: 450;
+}
+
+/* Cover */
+.cover-content {
+  position: absolute;
+  inset: 68px 60px 84px;
+}
+
+.cover-report-pill {
+  position: absolute;
+  top: -6px; right: 0;
+  min-width: 142px; height: 34px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.66);
+  display: inline-flex;
+  align-items: center; justify-content: center;
+  color: var(--slate);
+  font-size: 12px; font-weight: 700;
+}
+
+.brand-mark {
+  position: absolute;
+  left: 0; top: 74px;
+  width: 190px; height: 88px;
+}
+
+.brand-circle, .brand-triangle { position: absolute; display: block; }
+.brand-circle { width: 82px; height: 82px; border-radius: 50%; top: 2px; }
+.brand-circle-indigo { left: 0; background: var(--primary); }
+.brand-circle-purple { left: 52px; background: var(--periwinkle); }
+.brand-triangle {
+  left: 104px; top: 2px;
+  width: 0; height: 0;
+  border-left: 46px solid transparent;
+  border-right: 46px solid transparent;
+  border-bottom: 82px solid #ffd14d;
+}
+
+.cover-copy {
+  position: absolute;
+  left: 0; top: 242px; right: 40px;
+}
+
+.cover-copy h1 {
+  margin: 0;
+  color: var(--ink-strong);
+  font-weight: 780; line-height: 1.06;
+  white-space: nowrap;
+  font-size: 48px;
+}
+
+.cover-copy p {
+  margin: 26px 0 0;
+  color: var(--slate);
+  font-size: 22px; line-height: 1.3;
+}
+
+.cover-accent {
+  display: block;
+  width: 72px; height: 7px;
+  margin-top: 34px;
+  background: var(--gold);
+}
+
+.cover-index {
+  position: absolute;
+  left: 0; right: 0; bottom: 50px;
+  height: 64px;
+  border-top: 1px solid rgba(99,100,140,0.18);
+  border-bottom: 1px solid rgba(99,100,140,0.18);
+  display: flex; align-items: center; gap: 34px;
+  color: #3a3b66;
+  font-size: 12px; font-weight: 700;
+}
+
+.cover-index span:first-child { color: var(--periwinkle); }
+
+.cover-confidential {
+  position: absolute;
+  right: 0; bottom: 14px;
+  color: var(--steel);
+  font-size: 11px; letter-spacing: 0.6px;
+}
+
+/* Keywords Zone */
+.keyword-zone {
+  position: absolute;
+  left: 60px; right: 60px; top: 160px;
+  height: 90px;
+  display: flex; flex-wrap: wrap;
+  justify-content: center; align-content: center;
+  gap: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 16px;
+  padding: 12px;
+}
+
+.keyword-pill {
+  flex: 0 0 auto;
+  height: 38px;
+  border-radius: 8px;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center; justify-content: center;
+  white-space: nowrap;
+  font-size: 14px; line-height: 1; font-weight: 650;
+}
+
+.keyword-indigo  { color: #fff; background: var(--primary); }
+.keyword-purple  { color: #fff; background: var(--periwinkle); }
+.keyword-gold    { color: var(--ink-strong); background: #ffd14d; }
+.keyword-soft    { color: var(--primary); background: #ffffff; border: 1px solid var(--hairline); }
+
+/* Radar & Summary Grid */
+.overview-grid {
+  position: absolute;
+  left: 60px; right: 60px; top: 270px; bottom: 78px;
+  display: flex; gap: 20px;
+}
+
+.overview-card {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 20px;
+  padding: 24px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+}
+
+/* Comment Cards */
+.comment-grid {
+  position: absolute;
+  left: 60px; right: 60px; top: 170px; bottom: 78px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+  overflow: hidden;
+}
+
+.comment-card {
+  --card-color: var(--primary);
+  border: 1px solid var(--hairline);
+  border-top: 8px solid var(--card-color);
+  border-radius: 0 0 20px 20px;
+  background: var(--surface);
+  padding: 20px 24px;
+  display: flex; flex-direction: column;
+}
+
+.comment-card h3 {
+  margin: 0; color: var(--card-color);
+  font-size: 18px; font-weight: 750;
+}
+
+.comment-body {
+  margin-top: 14px;
+  color: var(--ink);
+  font-size: 15px; line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+/* Closing */
+.closing-card {
+  position: absolute;
+  left: 140px; right: 140px; top: 140px; bottom: 100px;
+  border: 1px solid var(--hairline);
+  border-radius: 24px;
+  background: #ffffff;
+  padding: 40px 60px;
+  text-align: center;
+}
+
+.closing-pill {
+  display: inline-flex;
+  height: 34px; align-items: center; justify-content: center;
+  border: 1px solid var(--hairline); border-radius: 999px;
+  background: var(--surface); padding: 0 20px;
+  color: var(--primary); font-size: 14px; font-weight: 650;
+}
+
+.closing-card h2 {
+  margin-top: 24px; color: var(--ink-strong);
+  font-size: 26px; line-height: 1.4; font-weight: 750;
+}
+
+.closing-card p {
+  margin-top: 18px; color: var(--slate);
+  font-size: 17px; line-height: 1.6;
+}
+</style>
 </head>
 <body>
 
-    <div class="header">
-        <h1>📊 피어리뷰 결과 리포트</h1>
-        <p>{{ cycle.title }}</p>
+  <!-- ========================================== -->
+  <!-- SLIDE 1: Cover Page (표지)                 -->
+  <!-- ========================================== -->
+  <section class="slide lavender-page">
+    <div class="cover-content">
+      <div class="cover-kicker">{{ cycle.title|default:"2026 YOURSSU PEER-REVIEW REPORT" }}</div>
+      <div class="cover-report-pill">PERSONAL REPORT</div>
+
+      <!-- Graphic Brand Mark -->
+      <div class="brand-mark">
+        <span class="brand-circle brand-circle-indigo"></span>
+        <span class="brand-circle brand-circle-purple"></span>
+        <span class="brand-triangle"></span>
+      </div>
+
+      <div class="cover-copy">
+        <h1>{{ reviewee.name }}님 피어리뷰 리포트</h1>
+        <p>동료의 시선으로 돌아보는 나의 강점과 성장 방향 ({{ reviewee.department|default:"YOURSSU Active Member" }})</p>
+        <span class="cover-accent"></span>
+      </div>
+
+      <div class="cover-index">
+        <span>KEYWORDS</span><span>CORE VALUES</span><span>CONTINUE</span><span>IMPROVE / START</span><span>MESSAGE</span>
+      </div>
+
+      <div class="cover-confidential">CONFIDENTIAL · YOURSSU HR</div>
     </div>
 
-    <div class="summary-box">
-        <table width="100%" cellspacing="0" cellpadding="0">
-            <tr>
-                <td><strong>대상자:</strong> {{ reviewee.name }} ({{ reviewee.department|default:"팀원" }})</td>
-                <td align="right"><strong>수신된 피드백 응답 수:</strong> {{ total_feedback_received }}건</td>
-            </tr>
+    <footer class="page-footer">
+      <span>Yourssu HR · 2026 Peer Review</span>
+      <span>Cover</span>
+      <span>Page 01</span>
+    </footer>
+  </section>
+
+  <!-- ========================================== -->
+  <!-- SLIDE 2: Keywords & Radar Overview Page   -->
+  <!-- ========================================== -->
+  <section class="slide">
+    <div class="page-heading">
+      <div class="eyebrow">01. KEYWORDS & CORE VALUES</div>
+      <h2>멤버들이 바라본, 나를 표현하는 키워드 및 역량 종합</h2>
+    </div>
+
+    <!-- Keyword Pills -->
+    <div class="keyword-zone">
+      <span class="keyword-pill keyword-indigo">#주도적인_실행력</span>
+      <span class="keyword-pill keyword-purple">#끝까지_파고드는_몰입</span>
+      <span class="keyword-pill keyword-gold">#유기적인_성장_동력</span>
+      <span class="keyword-pill keyword-soft">#명확한_피드백_제공</span>
+      <span class="keyword-pill keyword-indigo">#높은_책임감</span>
+      <span class="keyword-pill keyword-purple">#긍정적인_협업_시너지</span>
+    </div>
+
+    <div class="overview-grid">
+      <!-- Left: Category Score Summary -->
+      <div class="overview-card" style="align-items: flex-start; justify-content: flex-start;">
+        <h3 style="font-size: 18px; color: var(--primary); margin: 0 0 16px 0;">🎯 카테고리별 역량 평가 요약</h3>
+        <table width="100%" cellspacing="0" cellpadding="8" style="font-size: 15px; border-collapse: collapse;">
+          {% for cat in category_summary %}
+          <tr style="border-bottom: 1px solid var(--hairline);">
+            <td style="font-weight: bold; color: var(--ink-strong);">{{ cat.name }}</td>
+            <td align="right"><span style="color: var(--primary); font-weight: bold; font-size: 17px;">{{ cat.avg }}점</span> / 5.0점</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="2" style="color: var(--steel);">카테고리 요약 데이터가 없습니다.</td></tr>
+          {% endfor %}
         </table>
-    </div>
 
-    {% for q in questions_data %}
-        <div class="question-section">
-            <div class="question-title">
-                Q{{ q.order }}. {{ q.content }}
-            </div>
-
-            {% if q.question_type == 'RATING' %}
-                <div style="text-align: center; padding: 15px 0;">
-                    <div class="rating-badge">{{ q.avg_rating_label }}</div>
-                    <p style="font-size: 9.5pt; color: #6B7280; margin-top: 8px;">
-                        (최저 {{ q.min_rating }}점 ~ 최고 {{ q.max_rating }}점)
-                    </p>
-                </div>
-
-            {% elif q.question_type == 'TEXT' %}
-                {% if q.text_answers %}
-                    {% for ans in q.text_answers %}
-                        <div class="feedback-card">
-                            💬 "{{ ans }}"
-                        </div>
-                    {% endfor %}
-                {% else %}
-                    <p style="color: #9CA3AF; font-style: italic;">작성된 주관식 피드백이 없습니다.</p>
-                {% endif %}
-
-            {% elif q.question_type == 'SINGLE_CHOICE' or q.question_type == 'MULTIPLE_CHOICE' %}
-                <div style="padding: 5px 0;">
-                    {% for opt in q.options_summary %}
-                        <div class="tag-chip">
-                            {{ opt.text }} ({{ opt.count }}명 선택)
-                        </div>
-                    {% endfor %}
-                </div>
-            {% endif %}
+        {% if pie_chart_base64 %}
+        <div style="width: 100%; text-align: center; margin-top: 16px;">
+          <img src="{{ pie_chart_base64 }}" style="max-width: 260px; max-height: 160px; object-fit: contain;">
         </div>
-    {% endfor %}
+        {% endif %}
+      </div>
 
-    <div class="footer-note">
-        본 리포트는 동료들의 솔직한 평가와 무기명 피드백을 기반으로 자동 생성되었습니다.<br>
-        &copy; 2026 Peer Review Automation System. All rights reserved.
+      <!-- Right: N-Polygon Radar Chart -->
+      <div class="overview-card">
+        <h3 style="font-size: 18px; color: var(--primary); margin: 0 0 12px 0;">🕸️ N-각형 역량 방사형 (Radar) 차트</h3>
+        {% if radar_chart_base64 %}
+          <img src="{{ radar_chart_base64 }}" style="max-width: 480px; max-height: 330px; object-fit: contain;">
+        {% elif bar_chart_base64 %}
+          <img src="{{ bar_chart_base64 }}" style="max-width: 480px; max-height: 330px; object-fit: contain;">
+        {% else %}
+          <p style="color: var(--steel);">차트 데이터가 없습니다.</p>
+        {% endif %}
+      </div>
     </div>
+
+    <footer class="page-footer">
+      <span>Yourssu HR · 2026 Peer Review</span>
+      <span>Keywords & Core Values</span>
+      <span>Page 02</span>
+    </footer>
+  </section>
+
+  <!-- ========================================== -->
+  <!-- SLIDE 3+: Detailed Question Feedback Pages -->
+  <!-- ========================================== -->
+  {% for q in questions_data %}
+  <section class="slide">
+    <div class="page-heading">
+      <div class="eyebrow">02. DETAILED QUESTION FEEDBACK</div>
+      <h2>Q{{ q.order }}. {{ q.category }}</h2>
+    </div>
+
+    <div style="position: absolute; left: 60px; right: 60px; top: 160px;">
+      <div style="background: var(--surface); border: 1px solid var(--hairline); border-radius: 16px; padding: 20px 28px; margin-bottom: 20px;">
+        <span style="background: var(--primary); color: #fff; font-size: 13px; font-weight: bold; padding: 4px 12px; border-radius: 12px; display: inline-block; margin-bottom: 8px;">{{ q.category }}</span>
+        <h3 style="font-size: 22px; color: var(--ink-strong); margin: 0;">Q{{ q.order }}. {{ q.content }}</h3>
+
+        {% if q.image_url %}
+        <div style="text-align: center; margin-top: 14px;">
+          <img src="{{ q.image_url }}" style="max-width: 100%; max-height: 180px; border-radius: 10px; border: 1px solid var(--hairline);">
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- 1. Rating Question (5점 척도) -->
+      {% if q.question_type == 'RATING' %}
+      <div style="background: var(--surface); border: 1px solid var(--hairline); border-radius: 16px; padding: 32px; text-align: center;">
+        <div style="display: inline-block; background: linear-gradient(135deg, var(--primary), var(--periwinkle)); color: #fff; font-size: 26px; font-weight: bold; padding: 10px 32px; border-radius: 30px;">
+          {{ q.avg_rating_label }}
+        </div>
+        <div style="background: #e3e0f5; height: 14px; border-radius: 7px; overflow: hidden; width: 60%; margin: 20px auto 10px auto;">
+          <div style="background: var(--primary); height: 100%; width: {{ q.rating_percent }}%;"></div>
+        </div>
+        <p style="font-size: 15px; color: var(--slate); margin: 0;">
+          (최저 {{ q.min_rating }}점 ~ 최고 {{ q.max_rating }}점 · 총 {{ total_feedback_received }}명 응답 완료)
+        </p>
+      </div>
+
+      <!-- 2. Text Feedback Question (서술형 무기명 피드백) -->
+      {% elif q.question_type == 'TEXT' %}
+      <div class="comment-grid" style="position: static; width: 100%; height: auto; grid-template-columns: 1fr 1fr; gap: 16px;">
+        {% for ans in q.text_answers %}
+        <div class="comment-card">
+          <h3>💬 익명 피드백</h3>
+          <div class="comment-body">"{{ ans }}"</div>
+        </div>
+        {% empty %}
+        <p style="color: var(--steel); font-style: italic; font-size: 16px; grid-column: span 2;">작성된 주관식 피드백이 없습니다.</p>
+        {% endfor %}
+      </div>
+
+      <!-- 3. Multiple / Single Choice Question (선택형 비율) -->
+      {% elif q.question_type == 'SINGLE_CHOICE' or q.question_type == 'MULTIPLE_CHOICE' %}
+      <div style="display: flex; gap: 20px;">
+        <div style="flex: 1; background: var(--surface); border: 1px solid var(--hairline); border-radius: 16px; padding: 24px;">
+          <h4 style="font-size: 17px; color: var(--primary); margin: 0 0 14px 0;">📌 선택지별 선택 비율</h4>
+          {% for opt in q.options_summary %}
+          <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+            <span class="keyword-pill keyword-soft" style="height: 32px; font-size: 13px;">{{ opt.text }}</span>
+            <span style="font-size: 15px; font-weight: bold; color: var(--ink-strong);">{{ opt.percentage }}% ({{ opt.count }}명)</span>
+          </div>
+          {% empty %}
+          <p style="color: var(--steel); font-size: 14px;">선택지 데이터가 없습니다.</p>
+          {% endfor %}
+        </div>
+
+        <div style="flex: 1; background: var(--surface); border: 1px solid var(--hairline); border-radius: 16px; padding: 24px; text-align: center;">
+          <h4 style="font-size: 17px; color: var(--primary); margin: 0 0 10px 0;">📊 응답 선택 비율 차트</h4>
+          {% if q.pie_chart_base64 %}
+            <img src="{{ q.pie_chart_base64 }}" style="max-width: 280px; max-height: 180px; object-fit: contain;">
+          {% elif q.bar_chart_base64 %}
+            <img src="{{ q.bar_chart_base64 }}" style="max-width: 280px; max-height: 180px; object-fit: contain;">
+          {% else %}
+            <p style="color: var(--steel); font-size: 14px; margin-top: 40px;">차트 미제공</p>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <footer class="page-footer">
+      <span>Yourssu HR · 2026 Peer Review</span>
+      <span>Question Feedback</span>
+      <span>Page 0{{ forloop.counter|add:2 }}</span>
+    </footer>
+  </section>
+  {% endfor %}
+
+  <!-- ========================================== -->
+  <!-- SLIDE END: Closing Message Page           -->
+  <!-- ========================================== -->
+  <section class="slide lavender-page">
+    <div class="closing-card">
+      <div class="closing-pill">2026 YOURSSU PEER-REVIEW</div>
+      <h2>{{ reviewee.name }}님, 피어리뷰 수신을 축하합니다! 🎉</h2>
+      <p>
+        동료들이 전해준 솔직하고 따뜻한 피드백이 앞으로의 성장에 커다란 동력이 되기를 진심으로 응원합니다.<br>
+        함께 성장하며 더 나은 YOURSSU를 만들어 가요!
+      </p>
+      <strong style="display: block; margin-top: 32px; color: var(--steel); font-size: 15px; letter-spacing: 2px;">
+        YOURSSU HR TEAM
+      </strong>
+    </div>
+
+    <footer class="page-footer">
+      <span>Yourssu HR · 2026 Peer Review</span>
+      <span>Closing Message</span>
+      <span>End Slide</span>
+    </footer>
+  </section>
 
 </body>
 </html>

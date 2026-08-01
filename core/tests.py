@@ -248,6 +248,21 @@ class CustomHTMLTemplateTestCase(TestCase):
         self.assertTrue(context['q_5_pie_chart_base64'].startswith('data:image/png;base64,'))
         self.assertTrue(context['q_5_bar_chart_base64'].startswith('data:image/png;base64,'))
 
+    def test_question_image_injection(self):
+        """질문 문항 첨부 이미지 모델 저장 및 Context URL 인젝션 검증"""
+        dummy_img = SimpleUploadedFile("sample_q_img.jpg", b"fake_image_bytes", content_type="image/jpeg")
+        q6 = ReviewQuestion.objects.create(
+            cycle=self.cycle, order=6, question_type='TEXT',
+            category='디자인역량', content='시각디자인 시안을 평가하세요', image=dummy_img
+        )
+
+        context = PDFReportService.compile_feedback_data(self.cycle, self.bob)
+
+        # 질문 이미지 URL 존재 및 매칭 검증
+        self.assertTrue(bool(context['q_6_image_url']))
+        self.assertIn('sample_q_img', context['q_6_image_url'])
+
+
 
 class CSVMemberImportTestCase(TestCase):
     def test_import_members_from_csv(self):
