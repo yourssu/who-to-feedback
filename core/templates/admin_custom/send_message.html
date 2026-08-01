@@ -68,6 +68,7 @@ PeerFlow에서 바로 이어서 작성할 수 있습니다.</textarea>
 <div class="message-utility-actions">
   <form method="post" action="{% url 'admin_send_test_dm' %}">{% csrf_token %}<button type="submit" class="btn">관리자 테스트 DM 보내기</button></form>
   {% if failed_logs %}<form method="post" action="{% url 'admin_retry_failed_messages' %}">{% csrf_token %}<button type="submit" class="btn btn-tonal">실패한 DM {{ failed_logs|length }}건 재발송</button></form>{% endif %}
+  {% if cycle %}<a class="btn btn-tonal" href="{% url 'admin_delivery_checklist' cycle_id=cycle.id %}">발송 대상 체크리스트 보기</a>{% endif %}
 </div>
 {% endblock %}
 {% block scripts %}

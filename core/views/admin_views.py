@@ -618,6 +618,7 @@ def admin_publish_reports_action(request, cycle_id):
 def admin_send_message(request):
     members = Member.objects.all()
     failed_logs = SlackDeliveryLog.objects.filter(is_success=False)
+    latest_cycle = ReviewCycle.objects.order_by('-created_at').first()
 
     if request.method == 'POST':
         recipient_type = request.POST.get('recipient_type')
@@ -642,6 +643,7 @@ def admin_send_message(request):
     return render(request, 'admin_custom/send_message.html', {
         'members': members,
         'failed_logs': failed_logs,
+        'cycle': latest_cycle,
         'active_menu': 'messages',
     })
 
