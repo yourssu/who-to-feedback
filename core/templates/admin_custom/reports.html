@@ -1,6 +1,51 @@
-{% extends 'admin_custom/admin_base.html' %}{% block title %}리포트 검토 · PeerFlow Admin{% endblock %}{% block admin_content %}
-<header class="page-head"><div><h1 class="page-title">리포트 검토</h1><p class="page-description">익명 HTML 미리보기와 PDF 다운로드를 검토한 뒤 Slack DM 배포를 승인합니다.</p></div>{% if cycle.status == 'COMPLETED' %}<form method="post" action="{% url 'admin_publish_reports_action' cycle_id=cycle.id %}" data-confirm="검토를 완료하고 PDF 리포트를 Slack DM으로 일괄 발송할까요?">{% csrf_token %}<button class="btn btn-primary" type="submit">검토 완료 및 Slack DM 일괄 발송</button></form>{% else %}<button class="btn btn-primary" type="button" disabled>검토 완료 및 Slack DM 일괄 발송</button>{% endif %}</header>
-<div class="split" style="grid-template-columns:336px minmax(0,744px);gap:16px"><section class="card" style="min-height:600px"><h2 class="card-title">수신자별 리포트</h2><p class="card-subtitle">HTML 미리보기와 PDF 파일을 함께 확인합니다.</p><div class="stack" style="margin-top:12px">{% for r in reports %}<article style="padding:12px 14px;border-radius:12px;background:var(--bg-subtle)"><strong>{{ r.reviewee.name }}</strong><p class="assistive">{% if r.pdf_file %}PDF 준비 완료{% else %}PDF 생성 대기{% endif %}</p>{% if forloop.first %}<p class="assistive" style="color:var(--text-accent)">선택됨</p>{% elif r.pdf_file %}<a class="assistive" style="color:var(--text-accent)" href="{{ r.pdf_file.url }}" target="_blank" rel="noopener">PDF 다운로드</a>{% endif %}</article>{% empty %}<div class="empty-state">생성된 리포트가 없습니다.</div>{% endfor %}</div><p class="assistive" style="margin-top:12px">{{ reports|length }}명 · 생성일 {% now 'Y.m.d' %}</p></section>
-<section class="card" style="min-height:600px">{% with first=reports|first %}<div class="section-head"><h2 class="card-title">{% if first %}{{ first.reviewee.name }}{% else %}수신자{% endif %} · 수신자 웹 미리보기</h2><span class="assistive" style="color:var(--text-accent)">익명 HTML</span></div>{% if first %}<div class="report-preview" style="padding:18px;border:1px solid var(--border);min-height:440px"><h3 class="card-title">{{ cycle.title }} 피어리뷰 결과</h3>{% for q_data in first.preview_data.questions_data %}<div class="report-question">{% if q_data.question_type == 'RATING' %}<strong style="font-size:18px;color:var(--text-accent)">협업 만족도 평균 {{ q_data.avg_rating_label }}</strong>{% elif q_data.question_type == 'TEXT' %}<strong>서술형 피드백</strong>{% for ans in q_data.text_answers %}<p style="margin-top:8px;padding:10px 12px;background:var(--accent-soft);border-radius:12px">“{{ ans }}”</p>{% empty %}<p class="muted">작성된 서술형 피드백 없음</p>{% endfor %}{% else %}<strong>선택 응답</strong>{% for option in q_data.selected_options %}<span class="choice-chip" style="display:inline-block;margin:8px 4px 0 0;color:var(--text-accent);background:var(--accent-soft);border:0">{{ option }}</span>{% endfor %}{% endif %}</div>{% endfor %}</div><div class="banner" style="min-height:64px;margin:12px 0 0;display:block"><strong>수신자에게 작성자 정보가 노출되지 않습니다.</strong><br><span class="assistive">리뷰어 응답은 익명으로 종합됩니다.</span></div>{% else %}<div class="empty-state">미리보기할 리포트가 없습니다.</div>{% endif %}{% endwith %}</section></div>
-{% with first=reports|first %}<section class="card" style="margin-top:16px;display:flex;align-items:center;justify-content:space-between;gap:16px"><div><h2 class="card-title">{% if first and first.pdf_file %}{{ first.reviewee.name }}_peer_review_report.pdf{% else %}PDF 리포트 파일{% endif %}</h2><p class="assistive">{% now 'Y.m.d' %} 생성 · HTML 미리보기와 동일한 익명 내용</p></div><div class="actions">{% if first and first.pdf_file %}<a class="btn" href="{{ first.pdf_file.url }}" target="_blank" rel="noopener">PDF 미리보기</a><a class="btn btn-primary" href="{{ first.pdf_file.url }}" download>PDF 다운로드</a>{% else %}<button class="btn" disabled>PDF 미리보기</button><button class="btn btn-primary" disabled>PDF 다운로드</button>{% endif %}</div></section>{% endwith %}
+{% extends 'admin_custom/admin_base.html' %}
+{% block title %}리포트 검토 · PeerFlow Admin{% endblock %}
+{% block admin_content %}
+<header class="page-head">
+  <div>
+    <h1 class="page-title">리포트 검토</h1>
+    <p class="page-description">익명 HTML 미리보기와 PDF 다운로드를 검토한 뒤 Slack DM 배포를 승인합니다.</p>
+  </div>
+  <div class="head-actions">
+    {% if not checklist %}
+      <form method="post" action="{% url 'admin_generate_sample_reports' cycle_id=cycle.id %}">{% csrf_token %}<button class="btn" type="submit">샘플 3명 테스트 리포트 생성</button></form>
+      <form method="post" action="{% url 'admin_run_layout_check' cycle_id=cycle.id %}">{% csrf_token %}<button class="btn" type="submit">전체 자동 레이아웃 검수</button></form>
+      {% if cycle.status == 'COMPLETED' %}<form method="post" action="{% url 'admin_publish_reports_action' cycle_id=cycle.id %}" data-confirm="검토를 완료하고 PDF 리포트를 Slack DM으로 일괄 발송할까요?">{% csrf_token %}<button class="btn btn-primary" type="submit">검토 완료 및 Slack DM 일괄 발송</button></form>{% else %}<button class="btn btn-primary" type="button" disabled>검토 완료 및 Slack DM 일괄 발송</button>{% endif %}
+    {% endif %}
+  </div>
+</header>
+
+{% if checklist %}
+<section class="card">
+  <div class="section-head"><div><h2 class="card-title">발송 대상 체크리스트</h2><p class="card-subtitle">Slack DM 발송 전 필수 항목을 확인합니다.</p></div><a class="btn" href="{% url 'admin_reports' cycle_id=cycle.id %}">리포트 검토로 돌아가기</a></div>
+  <div class="table-scroll"><table class="table-custom"><thead><tr><th>수신자</th><th>팀</th><th>Slack ID</th><th>PDF</th><th>승인</th></tr></thead><tbody>{% for item in checklist %}<tr><td>{{ item.member.name }}</td><td>{{ item.department }}</td><td>{% if item.has_slack_id %}<span class="badge badge-success">확인됨</span>{% else %}<span class="badge badge-warning">확인 필요</span>{% endif %}</td><td>{% if item.has_pdf %}<span class="badge badge-success">준비됨</span>{% else %}<span class="badge badge-warning">대기</span>{% endif %}</td><td>{% if item.is_approved %}<span class="badge badge-success">승인됨</span>{% else %}<span class="badge badge-warning">검토 필요</span>{% endif %}</td></tr>{% empty %}<tr><td colspan="5" class="muted">확인할 발송 대상이 없습니다.</td></tr>{% endfor %}</tbody></table></div>
+</section>
+{% else %}
+<div class="report-workspace">
+  <section class="card report-list-card">
+    <div><h2 class="card-title">수신자별 리포트</h2><p class="card-subtitle">HTML 미리보기와 PDF 파일을 함께 확인합니다.</p></div>
+    <div class="stack">{% for r in reports %}
+      <article class="report-recipient {% if forloop.first %}selected{% endif %}"><strong>{{ r.reviewee.name }}</strong><span>{% if r.pdf_file %}PDF 준비 완료{% else %}PDF 생성 대기{% endif %} · v{{ r.version }}</span>{% if forloop.first %}<small>선택됨</small>{% elif r.pdf_file %}<a href="{{ r.pdf_file.url }}" target="_blank" rel="noopener">PDF 다운로드</a>{% endif %}</article>
+    {% empty %}<div class="empty-state">생성된 리포트가 없습니다.</div>{% endfor %}</div>
+    <p class="assistive">{{ reports|length }}명 · 생성일 {% now 'Y.m.d' %}</p>
+  </section>
+  <section class="card report-preview-card">{% with first=reports|first %}
+    <div class="section-head"><h2 class="card-title">{% if first %}{{ first.reviewee.name }}{% else %}수신자{% endif %} · 수신자 웹 미리보기</h2><small>익명 HTML</small></div>
+    {% if first %}
+      <div class="report-document"><h3>{{ cycle.title }} 피어리뷰 결과</h3>{% for q_data in first.preview_data.questions_data %}{% if q_data.question_type == 'RATING' %}<strong>협업 만족도 평균 {{ q_data.avg_rating_label }}</strong>{% elif q_data.question_type == 'TEXT' %}<h4>서술형 피드백</h4>{% for ans in q_data.text_answers %}<p>“{{ ans }}”</p>{% empty %}<p class="muted">작성된 서술형 피드백 없음</p>{% endfor %}{% else %}<h4>선택 응답</h4>{% for option in q_data.selected_options %}<span>{{ option }}</span>{% endfor %}{% endif %}{% endfor %}</div>
+      <div class="banner"><strong>수신자에게 작성자 정보가 노출되지 않습니다.</strong><br><span class="assistive">리뷰어 응답은 익명으로 종합됩니다.</span></div>
+    {% else %}<div class="empty-state">미리보기할 리포트가 없습니다.</div>{% endif %}
+  {% endwith %}</section>
+</div>
+
+{% for r in reports %}
+<section class="card" style="margin-top:16px">
+  <div class="section-head"><div><h2 class="card-title">{{ r.reviewee.name }} 리포트 관리</h2><p class="card-subtitle">상태: {{ r.validation_status }} · 버전 v{{ r.version }}</p></div>{% if r.layout_check_passed %}<span class="badge badge-success">레이아웃 검수 통과</span>{% else %}<span class="badge badge-warning">레이아웃 확인 필요</span>{% endif %}</div>
+  {% if not r.layout_check_passed %}<div class="banner banner-warning">레이아웃 이슈: {{ r.layout_issue_notes|default:'자동 검수를 실행해 주세요.' }}</div>{% endif %}
+  <div class="actions" style="margin-top:12px"><form method="post" action="{% url 'admin_regenerate_report' report_id=r.report_id %}">{% csrf_token %}<button class="btn btn-small" type="submit">{{ r.reviewee.name }} 리포트 재생성</button></form>{% if r.pdf_file %}<a class="btn btn-small" href="{{ r.pdf_file.url }}" target="_blank" rel="noopener">PDF 미리보기</a><a class="btn btn-primary btn-small" href="{{ r.pdf_file.url }}" download>PDF 다운로드</a>{% endif %}</div>
+  <form method="post" action="{% url 'admin_save_report_memo' report_id=r.report_id %}" class="inline-form">{% csrf_token %}<input type="text" class="form-control" name="admin_memo" value="{{ r.admin_memo }}" placeholder="관리자 수정 메모 입력..."><button type="submit" class="btn btn-small">메모 저장</button></form>
+</section>
+{% endfor %}
+<section class="card report-pdf-summary"><div><h2 class="card-title">발송 전 최종 확인</h2><p class="assistive">이름, 팀, Slack ID, PDF 및 승인 상태를 확인합니다.</p></div><a class="btn btn-tonal" href="{% url 'admin_delivery_checklist' cycle_id=cycle.id %}">발송 대상 체크리스트 보기</a></section>
+{% endif %}
 {% endblock %}

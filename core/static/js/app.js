@@ -31,4 +31,9 @@ document.documentElement.classList.add('js');
     var valid=function(step){var required=Array.from(step.querySelectorAll('[required]'));for(var i=0;i<required.length;i++){var field=required[i];if((field.type==='radio'||field.type==='checkbox')&&!step.querySelector('[name="'+field.name+'"]:checked')){field.focus();return false}if(!field.value.trim()){field.focus();field.reportValidity();return false}}return true};
     wizard.addEventListener('click',function(e){var start=e.target.closest('[data-wizard-start]'),next=e.target.closest('[data-wizard-next]'),prev=e.target.closest('[data-wizard-prev]');if(start){show(0)}if(next&&valid(steps[index])){show(index+1)}if(prev){show(index-1)}});show(-1);
   }
+  var reviewForm=document.getElementById('reviewForm');
+  if(reviewForm){
+    var cookie=function(name){return document.cookie.split(';').map(function(v){return v.trim()}).reduce(function(found,v){return found|| (v.indexOf(name+'=')===0?decodeURIComponent(v.slice(name.length+1)):null)},null)};
+    document.addEventListener('click',function(e){var save=e.target.closest('[data-save-draft]');if(!save)return;var assignmentId=reviewForm.dataset.assignmentId;if(!assignmentId)return;save.disabled=true;fetch('/review/'+assignmentId+'/save-draft/',{method:'POST',headers:{'X-CSRFToken':cookie('csrftoken'),'X-Requested-With':'XMLHttpRequest'},body:new FormData(reviewForm)}).then(function(res){return res.json()}).then(function(data){if(data.status==='success'){save.textContent='임시 저장됨';setTimeout(function(){save.textContent='임시 저장';save.disabled=false},1500);return}save.disabled=false}).catch(function(){save.disabled=false})});
+  }
 })();
