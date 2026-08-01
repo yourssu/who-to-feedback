@@ -3,6 +3,8 @@ from django.utils import timezone
 from datetime import timedelta
 from django.urls import reverse
 from django.contrib.auth.models import User
+from django.core.files.base import ContentFile
+from django.core.files.uploadedfile import SimpleUploadedFile
 import json
 import os
 
@@ -245,6 +247,23 @@ class CustomHTMLTemplateTestCase(TestCase):
         # 선택형 문항 차트 2종 생성 검증
         self.assertTrue(context['q_5_pie_chart_base64'].startswith('data:image/png;base64,'))
         self.assertTrue(context['q_5_bar_chart_base64'].startswith('data:image/png;base64,'))
+
+
+class CSVMemberImportTestCase(TestCase):
+    def test_import_members_from_csv(self):
+        """CSV 멤버 일괄 임포트 기능 테스트 (한글 헤더, 신규 생성 & 업데이트)"""
+        csv_content = (
+            "이름,이메일,slack_user_id,부서,역할\n"
+            "김개발,dev@yourssu.com,U_DEV,개발팀,MEMBER\n"
+            "이디자인,design@yourssu.com,U_DES,디자인팀,ADMIN\n"
+        )
+        csv_file = SimpleUploadedFile("members.csv", csv_content.encode('utf-8-sig'), content_type="text/csv")
+        res = DataValidationService.import_members_from_csv(csv_file)
+
+        self.assertEqual(res['created'], 2)
+        self.assertTrue(Member.objects.filter(email='dev@yourssu.com', name='김개발').exists())
+        self.assertTrue(Member.objects.filter(email='design@yourssu.com', role='ADMIN').exists())
+
 
 
 

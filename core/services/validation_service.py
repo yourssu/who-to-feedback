@@ -103,3 +103,77 @@ class DataValidationService:
                     excluded_count += 1
 
         return excluded_count
+
+    @staticmethod
+    def import_members_from_csv(csv_file):
+        """CSV 파일에서 팀원 목록(이름, 이메일, Slack ID, 소속 부서, 역할) 일괄 추가/업데이트"""
+        import csv
+        import io
+        import unicodedata
+
+        raw_bytes = csv_file.read()
+        csv_text = None
+
+        # 인코딩 자동 시도 (utf-8-sig -> utf-8 -> cp949 -> euc-kr)
+        for enc in ['utf-8-sig', 'utf-8', 'cp949', 'euc-kr']:
+            try:
+                csv_text = raw_bytes.decode(enc)
+                break
+            except (UnicodeDecodeError, TypeError):
+                continue
+
+        if not csv_text:
+            raise ValueError("CSV 파일 인코딩을 해석할 수 없습니다. UTF-8 또는 CP949 인코딩으로 저장해 주세요.")
+
+        reader = csv.DictReader(io.StringIO(csv_text))
+        headers = [h.strip().lower() for h in (reader.fieldnames or [])]
+
+        def get_col(row, *aliases):
+            for a in aliases:
+                for k, v in row.items():
+                    if k and k.strip().lower() == a:
+                        return (v or "").strip()
+            return ""
+
+        created_count = 0
+        updated_count = 0
+
+        for row in reader:
+            if not row or not any(row.values()):
+                continue
+
+            name = get_col(row, 'name', '이름', '닉네임', 'username')
+            email = get_col(row, 'email', '이메일')
+            slack_id = get_col(row, 'slack_user_id', 'slack_id', '슬랙id', 'slack')
+            dept = get_col(row, 'department', 'dept', '소속부서', '부서', '팀')
+            role_raw = get_col(row, 'role', '역할', '권한').upper()
+
+            if not name:
+                continue
+
+            # 이메일이 없을 때 가상 이메일 생성
+            if not email:
+                norm_prefix = "".join(ch for ch in unicodedata.normalize('NFKC', name).lower() if ch.isalnum())
+                email = f"{norm_prefix or 'user'}@yourssu.com"
+
+            role = 'ADMIN' if role_raw in ['ADMIN', '관리자', 'SUPERUSER'] else 'MEMBER'
+            norm_name = unicodedata.normalize('NFKC', name).casefold()
+
+            member, created = Member.objects.update_or_create(
+                email=email,
+                defaults={
+                    'name': name,
+                    'slack_user_id': slack_id or f"U_{norm_name[:10]}",
+                    'department': dept or "일반",
+                    'role': role,
+                    'normalized_name': norm_name,
+                }
+            )
+
+            if created:
+                created_count += 1
+            else:
+                updated_count += 1
+
+        return {'created': created_count, 'updated': updated_count, 'total': created_count + updated_count}
+

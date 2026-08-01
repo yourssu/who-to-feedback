@@ -21,6 +21,7 @@ urlpatterns = [
     # PAGE 1: 팀원 관리
     path('admin-panel/members/', admin_views.admin_members, name='admin_members'),
     path('admin-panel/members/add/', admin_views.admin_add_member, name='admin_add_member'),
+    path('admin-panel/members/import-csv/', admin_views.admin_import_members_csv, name='admin_import_members_csv'),
     path('admin-panel/members/<int:member_id>/delete/', admin_views.admin_delete_member, name='admin_delete_member'),
 
     # PAGE 2: 데이터 검증 (a-validation)
