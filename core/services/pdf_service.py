@@ -3,6 +3,7 @@ import io
 import math
 import base64
 import random
+import gc
 
 try:
     import matplotlib
@@ -400,35 +401,37 @@ class PDFReportService:
                 with sync_playwright() as p:
                     browser = p.chromium.launch(
                         headless=True,
-                        args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+                        args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
                     )
-                    page = browser.new_page(
+                    try:
+                        page = browser.new_page(
+                            viewport={"width": 6144, "height": 3456},
+                            device_scale_factor=2
+                        )
+                        page.set_content(html_content, wait_until="networkidle")
 
-                        viewport={"width": 6144, "height": 3456},
-                        device_scale_factor=2
-                    )
-                    page.set_content(html_content, wait_until="networkidle")
+                        slide_elements = page.query_selector_all('.slide')
+                        png_images = []
 
-                    slide_elements = page.query_selector_all('.slide')
-                    png_images = []
-
-                    if slide_elements:
-                        for idx, slide_el in enumerate(slide_elements):
-                            png_bytes = slide_el.screenshot(type="png")
+                        if slide_elements:
+                            for idx, slide_el in enumerate(slide_elements):
+                                png_bytes = slide_el.screenshot(type="png")
+                                img = Image.open(io.BytesIO(png_bytes)).convert('RGB')
+                                png_images.append(img)
+                        else:
+                            png_bytes = page.screenshot(type="png", full_page=True)
                             img = Image.open(io.BytesIO(png_bytes)).convert('RGB')
                             png_images.append(img)
-                    else:
-                        png_bytes = page.screenshot(type="png", full_page=True)
-                        img = Image.open(io.BytesIO(png_bytes)).convert('RGB')
-                        png_images.append(img)
-
-                    browser.close()
+                    finally:
+                        browser.close()
 
                     if png_images:
                         png_images[0].save(full_path, save_all=True, append_images=png_images[1:], resolution=600.0)
                         pdf_generated_by_playwright = True
             except Exception as pw_err:
                 pdf_generated_by_playwright = False
+            finally:
+                gc.collect()
 
             if not pdf_generated_by_playwright:
                 with open(full_path, 'wb') as pdf_file:

@@ -32,8 +32,8 @@ RUN chmod +x /app/entrypoint.sh
 # 외부 노출 포트
 EXPOSE 8000
 
-# 엔트리포인트 및 Gunicorn WSGI 서버 실행 (워커 3개, 타임아웃 120초)
+# 엔트리포인트 및 Gunicorn WSGI 서버 실행 (워커 2개, 스레드 4개, 타임아웃 120초)
 ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "120", "config.wsgi:application"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "2", "--threads", "4", "--timeout", "120", "config.wsgi:application"]
 
 

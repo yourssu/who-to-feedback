@@ -262,6 +262,12 @@ class CustomHTMLTemplateTestCase(TestCase):
         self.assertTrue(bool(context['q_6_image_url']))
         self.assertIn('sample_q_img', context['q_6_image_url'])
 
+    def test_health_check_endpoint(self):
+        """Docker 헬스체크용 /health/ 엔드포인트 200 OK 응답 검증"""
+        response = self.client.get('/health/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {'status': 'ok'})
+
 
 
 class CSVMemberImportTestCase(TestCase):
@@ -278,6 +284,37 @@ class CSVMemberImportTestCase(TestCase):
         self.assertEqual(res['created'], 2)
         self.assertTrue(Member.objects.filter(email='dev@yourssu.com', name='김개발').exists())
         self.assertTrue(Member.objects.filter(email='design@yourssu.com', role='ADMIN').exists())
+
+
+class SetupWizardTestCase(TestCase):
+    def test_setup_wizard_flow(self):
+        """최초 구동 Setup Wizard GET, POST 계정 생성 및 관리자 1명 이상 존재 시 영구 차단(404) 테스트"""
+        # 1. DB 초기 상태 - /setup/ 접근 시 200 OK
+        res = self.client.get('/setup/')
+        self.assertEqual(res.status_code, 200)
+
+        # 2. 관리자 0명 상태에서 /admin-panel/ 접근 시 /setup/ 으로 리다이렉트
+        res_admin = self.client.get('/admin-panel/')
+        self.assertRedirects(res_admin, '/setup/')
+
+        # 3. 최초 관리자 생성 POST
+        post_data = {
+            'username': 'masteradmin',
+            'email': 'master@yourssu.com',
+            'password': 'password123!',
+            'password_confirm': 'password123!'
+        }
+        res_post = self.client.post('/setup/', post_data)
+        self.assertRedirects(res_post, reverse('admin_dashboard'))
+
+        # DB에 슈퍼유저 및 Member ADMIN 생성 확인
+        self.assertTrue(User.objects.filter(username='masteradmin', is_superuser=True).exists())
+        self.assertTrue(Member.objects.filter(email='master@yourssu.com', role='ADMIN').exists())
+
+        # 4. 관리자 계정 생성 완료 후 /setup/ 접근 시 404 차단
+        res_locked = self.client.get('/setup/')
+        self.assertEqual(res_locked.status_code, 404)
+
 
 
 

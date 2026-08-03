@@ -122,7 +122,8 @@ class SlackService:
 
     def send_auth_code_dm(self, member, code, cycle=None):
         """6자리 PIN 인증 코드 Slack DM 전송"""
-        login_url = "http://127.0.0.1:8000/login"
+        site_url = getattr(settings, 'SITE_URL', 'http://127.0.0.1:8000').rstrip('/')
+        login_url = f"{site_url}/login"
         message_text = (
             f"🔑 **[피어리뷰 로그인 6자리 PIN 코드]**\n"
             f"안녕하세요 {member.name}님!\n"

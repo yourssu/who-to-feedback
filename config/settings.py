@@ -29,6 +29,12 @@ ALLOWED_HOSTS = [host.strip() for host in allowed_hosts_env.split(',') if host.s
 csrf_trusted_env = os.environ.get('CSRF_TRUSTED_ORIGINS', '')
 if csrf_trusted_env:
     CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in csrf_trusted_env.split(',') if origin.strip()]
+else:
+    CSRF_TRUSTED_ORIGINS = []
+    for host in ALLOWED_HOSTS:
+        if host and host not in ('*', 'localhost', '127.0.0.1', '0.0.0.0'):
+            clean_host = host.lstrip('.')
+            CSRF_TRUSTED_ORIGINS.extend([f'https://{clean_host}', f'http://{clean_host}'])
 
 # Application definition
 INSTALLED_APPS = [
@@ -71,10 +77,25 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'config.wsgi.application'
 
+DATA_DIR = BASE_DIR / 'data'
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+legacy_db = BASE_DIR / 'db.sqlite3'
+target_db = DATA_DIR / 'db.sqlite3'
+if legacy_db.exists() and not target_db.exists():
+    import shutil
+    try:
+        shutil.move(str(legacy_db), str(target_db))
+    except Exception:
+        pass
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': target_db,
+        'OPTIONS': {
+            'timeout': 30,
+        },
     }
 }
 
@@ -107,7 +128,7 @@ STORAGES = {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
     },
     "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
     },
 }
 
@@ -117,6 +138,7 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # Slack Configuration
 SLACK_BOT_TOKEN = os.environ.get('SLACK_BOT_TOKEN', '')
 MOCK_SLACK_MODE = os.environ.get('MOCK_SLACK_MODE', 'True').lower() in ('true', '1', 't')
+SITE_URL = os.environ.get('SITE_URL', 'http://127.0.0.1:8000')
 
 # Reverse Proxy / SSL (Cloudflare & Nginx)
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')

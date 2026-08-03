@@ -1,10 +1,11 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.utils import timezone
-from django.db import IntegrityError
+from django.db import IntegrityError, connection
 from django.contrib.auth.decorators import user_passes_test
 from django.http import JsonResponse, HttpResponse
 import os
+import threading
 
 from core.models import (
     Member, ReviewCycle, ReviewQuestion, QuestionOption,
@@ -19,12 +20,35 @@ from core.services.layout_service import LayoutCheckService
 from core.services.report_service import ReportManagementService
 
 
+from functools import wraps
+from django.contrib.auth.models import User
+
+
 def superuser_required(view_func):
-    """superuser 계정으로 로그인한 관리자만 커스텀 관리자 페이지에 접근 가능"""
-    return user_passes_test(
-        lambda u: u.is_authenticated and u.is_superuser,
-        login_url='/admin/login/'
-    )(view_func)
+    """superuser 계정 또는 Member.role == 'ADMIN'으로 로그인한 관리자만 접근 가능 (DB 초기 상태 시 /setup/ 자동 안내)"""
+    @wraps(view_func)
+    def _wrapped_view(request, *args, **kwargs):
+        has_superuser = User.objects.filter(is_superuser=True).exists()
+        has_admin_member = Member.objects.filter(role='ADMIN').exists()
+
+        # DB에 관리자가 0명인 초기 상태 시 setup_wizard로 안내
+        if not has_superuser and not has_admin_member:
+            return redirect('setup_wizard')
+
+        # 1. Django Superuser 로그인 세션 확인
+        if request.user.is_authenticated and request.user.is_superuser:
+            return view_func(request, *args, **kwargs)
+
+        # 2. Member PIN 코드 로그인 중 role=='ADMIN' 확인
+        member_id = request.session.get('member_id')
+        if member_id:
+            member = Member.objects.filter(id=member_id).first()
+            if member and member.role == 'ADMIN':
+                return view_func(request, *args, **kwargs)
+
+        messages.error(request, "관리자 권한이 필요합니다.")
+        return redirect('login')
+    return _wrapped_view
 
 
 # ==========================================
@@ -494,6 +518,23 @@ def admin_send_reminder_action(request, cycle_id):
     return redirect('admin_status')
 
 
+def _background_report_generation(cycle_id):
+    """Cloudflare 100초 HTTP 524 타임아웃 방지를 위한 비동기 백그라운드 PDF/PPT 생성 스레드"""
+    connection.close()  # 스레드 전용 독립 DB 커넥션 생성 보장
+    try:
+        cycle = ReviewCycle.objects.get(id=cycle_id)
+        cycle.status = 'COMPLETED'
+        cycle.save()
+        pdf_reports = PDFReportService.generate_all_reports_for_cycle(cycle)
+        reviewees = set(a.reviewee for a in cycle.assignments.all())
+        for rev in reviewees:
+            PPTReportService.generate_ppt_report(cycle, rev)
+            LayoutCheckService.check_layout_overflow(cycle, rev)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Background report generation error: {e}")
+
+
 @superuser_required
 def admin_generate_reports_action(request, cycle_id):
     if request.method == 'POST':
@@ -503,16 +544,11 @@ def admin_generate_reports_action(request, cycle_id):
             messages.warning(request, f"아직 전원 제출되지 않았습니다 (완료율: {cycle.completion_rate}%). 모든 리뷰어가 작성을 마쳐야 합니다.")
             return redirect('admin_status_detail', cycle_id=cycle_id)
 
-        cycle.status = 'COMPLETED'
-        cycle.save()
-        pdf_reports = PDFReportService.generate_all_reports_for_cycle(cycle)
+        # Cloudflare 100초 HTTP 524 타임아웃 방지: 비동기 스레드 실행 후 즉시 리다이렉트
+        thread = threading.Thread(target=_background_report_generation, args=(cycle.id,), daemon=True)
+        thread.start()
 
-        reviewees = set(a.reviewee for a in cycle.assignments.all())
-        for rev in reviewees:
-            PPTReportService.generate_ppt_report(cycle, rev)
-            LayoutCheckService.check_layout_overflow(cycle, rev)
-
-        messages.success(request, f"총 {len(pdf_reports)}건의 PDF/PPT 리포트 및 자동 레이아웃 검수가 완료되었습니다!")
+        messages.info(request, f"[{cycle.title}] 회차의 전체 6K 리포트 일괄 생성 작업이 백그라운드에서 시작되었습니다. 생성 진행 상황은 잠시 후 페이지를 새로고침하여 확인할 수 있습니다.")
         return redirect('admin_reports', cycle_id=cycle_id)
 
     return redirect('admin_status')
