@@ -12,7 +12,6 @@ services:
     volumes:
       - ./data:/app/data
       - ./media:/app/media
-      - ./staticfiles:/app/staticfiles
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
       interval: 30s
