@@ -1,106 +1,31 @@
 {% extends 'admin_custom/admin_base.html' %}
-
-{% block title %}데이터 검증 - PeerFlow Admin{% endblock %}
-
+{% block title %}데이터 검증 · PeerFlow Admin{% endblock %}
 {% block admin_content %}
-<div class="card">
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-        <div>
-            <h2 class="card-title">🔍 STEP 0. 데이터 검증 및 닉네임 정규화</h2>
-            <p class="card-subtitle">엑셀 업로드 직후 필수값 오류 검출, 이름 정규화 및 응답 품질 필터링을 관리합니다.</p>
-        </div>
-        {% if cycle %}
-            <button onclick="document.getElementById('uploadModal').classList.add('open')" class="btn btn-primary">
-                📁 엑셀/CSV 파일 업로드
-            </button>
-        {% endif %}
-    </div>
-</div>
+<header class="page-head">
+  <div><span class="eyebrow">DATA QUALITY</span><h1 class="page-title">데이터 검증</h1><p class="page-description">업로드 데이터의 필수값을 확인하고 유사한 이름을 안전하게 정리합니다.</p></div>
+  {% if cycle %}<div class="head-actions"><button type="button" class="btn btn-primary" data-modal-open="uploadModal">엑셀 파일 업로드</button></div>{% endif %}
+</header>
 
 {% if cycle %}
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
-        <!-- 1. 업로드 필수값 오류 테이블 -->
-        <div class="card" style="margin-bottom: 0;">
-            <h3 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 0.75rem; color: #991B1B;">
-                ⚠️ 업로드 필수값 오류 (총 {{ logs|length }}건)
-            </h3>
-            <div style="max-height: 300px; overflow-y: auto;">
-                <table class="table-custom" style="font-size: 0.85rem;">
-                    <thead>
-                        <tr>
-                            <th>행</th>
-                            <th>검증 항목</th>
-                            <th>현재 입력값</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for log in logs %}
-                            <tr>
-                                <td>{{ log.row_index }}행</td>
-                                <td><span class="badge badge-warning">{{ log.get_issue_type_display|default:log.issue_type }}</span></td>
-                                <td><code>{{ log.current_value }}</code></td>
-                            </tr>
-                        {% empty %}
-                            <tr>
-                                <td colspan="3" style="text-align: center; color: var(--success); padding: 1.5rem;">
-                                    🎉 필수값 오류가 발견되지 않았습니다.
-                                </td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
+<div class="validation-summary">
+  <article class="card"><span class="metric-label">필수값 오류</span><strong class="metric-value">{{ logs|length }}<small>건</small></strong><p class="card-subtitle">업로드 원본에서 확인이 필요한 항목</p></article>
+  <article class="card"><span class="metric-label">이름 정규화</span><strong class="metric-value">{{ suggestions|length }}<small>그룹</small></strong><p class="card-subtitle">유사도가 높아 병합을 검토할 이름</p></article>
+</div>
+<div class="validation-grid">
+  <section class="card">
+    <div class="section-head"><div><h2 class="card-title">필수값 오류</h2><p class="card-subtitle">원본 행과 현재 입력값을 확인해 주세요.</p></div><span class="badge {% if logs %}badge-warning{% else %}badge-success{% endif %}">{% if logs %}확인 필요{% else %}정상{% endif %}</span></div>
+    <div class="table-scroll compact-table"><table class="table-custom"><thead><tr><th>행</th><th>검증 항목</th><th>현재 입력값</th></tr></thead><tbody>{% for log in logs %}<tr><td>{{ log.row_index }}행</td><td><span class="badge badge-warning">{{ log.get_issue_type_display|default:log.issue_type }}</span></td><td><code>{{ log.current_value|default:'비어 있음' }}</code></td></tr>{% empty %}<tr><td colspan="3"><div class="table-empty-success">필수값 오류가 발견되지 않았어요.</div></td></tr>{% endfor %}</tbody></table></div>
+  </section>
+  <section class="card">
+    <div class="section-head"><div><h2 class="card-title">이름 정규화 제안</h2><p class="card-subtitle">병합 전 원본 이름과 제안 이름을 확인하세요.</p></div></div>
+    <div class="normalization-list">{% for sug in suggestions %}<article class="normalization-item"><div><strong>{{ sug.raw_names|join:', ' }}</strong><span>유사도 {{ sug.similarity }}% · 제안 이름 {{ sug.suggested_name }}</span></div><form method="post" action="{% url 'admin_apply_normalization' %}">{% csrf_token %}<input type="hidden" name="cycle_id" value="{{ cycle.id }}">{% for r in sug.raw_names %}<input type="hidden" name="raw_names" value="{{ r }}">{% endfor %}<input type="hidden" name="target_name" value="{{ sug.suggested_name }}"><button type="submit" class="btn btn-tonal btn-small">{{ sug.suggested_name }}(으)로 병합</button></form></article>{% empty %}<div class="empty-state compact-empty">유사도가 높은 미정규화 이름 그룹이 없습니다.</div>{% endfor %}</div>
+  </section>
+</div>
 
-        <!-- 2. 이름/닉네임 정규화 제안 -->
-        <div class="card" style="margin-bottom: 0;">
-            <h3 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 0.75rem; color: var(--primary);">
-                💡 이름 / 닉네임 정규화 자동 제안
-            </h3>
-            {% for sug in suggestions %}
-                <div style="padding: 0.75rem; background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius-sm); margin-bottom: 0.5rem; font-size: 0.85rem;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <strong>유사 이름 그룹:</strong> {{ sug.raw_names|join:", " }}
-                            <br><span style="font-size: 0.75rem; color: var(--gray-600);">유사도 {{ sug.similarity }}%</span>
-                        </div>
-                        <form method="POST" action="{% url 'admin_apply_normalization' %}">
-                            {% csrf_token %}
-                            <input type="hidden" name="cycle_id" value="{{ cycle.id }}">
-                            {% for r in sug.raw_names %}
-                                <input type="hidden" name="raw_names" value="{{ r }}">
-                            {% endfor %}
-                            <input type="hidden" name="target_name" value="{{ sug.suggested_name }}">
-                            <button type="submit" class="btn btn-primary" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;">
-                                '{{ sug.suggested_name }}' 병합
-                            </button>
-                        </form>
-                    </div>
-                </div>
-            {% empty %}
-                <p style="color: var(--gray-600); font-size: 0.85rem; padding: 1.5rem; text-align: center;">
-                    유사도가 높은 미정규화 이름 그룹이 없습니다.
-                </p>
-            {% endfor %}
-        </div>
-    </div>
-
-    <!-- 엑셀 업로드 모달 -->
-    <div id="uploadModal" class="modal">
-        <div class="modal-content">
-            <h3 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 1rem;">📁 팀원 / 매칭 엑셀 파일 업로드</h3>
-            <form method="POST" action="{% url 'admin_upload_excel' cycle_id=cycle.id %}" enctype="multipart/form-data">
-                {% csrf_token %}
-                <div class="form-group">
-                    <label class="form-label">엑셀(.xlsx) 파일 선택</label>
-                    <input type="file" name="excel_file" accept=".xlsx, .xls" class="form-control" required>
-                </div>
-                <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1.5rem;">
-                    <button type="button" onclick="document.getElementById('uploadModal').classList.remove('open')" class="btn" style="background: var(--gray-100);">취소</button>
-                    <button type="submit" class="btn btn-primary">업로드 및 검증 실행</button>
-                </div>
-            </form>
-        </div>
-    </div>
+<div id="uploadModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="uploadTitle" aria-hidden="true">
+  <div class="modal-content"><div class="modal-head"><div><span class="eyebrow">IMPORT</span><h2 class="modal-title" id="uploadTitle">팀원·매칭 파일 업로드</h2></div><button type="button" class="modal-close" data-modal-close aria-label="닫기">×</button></div><p class="card-subtitle modal-description">엑셀 파일을 업로드하면 저장 전 필수값과 이름 중복을 검사합니다.</p><form method="post" action="{% url 'admin_upload_excel' cycle_id=cycle.id %}" enctype="multipart/form-data">{% csrf_token %}<div class="form-group"><label class="form-label" for="excel-file">엑셀 파일</label><input id="excel-file" type="file" name="excel_file" accept=".xlsx,.xls" class="form-control" required><span class="assistive">.xlsx 또는 .xls 형식을 지원합니다.</span></div><div class="modal-actions"><button type="button" data-modal-close class="btn">취소</button><button type="submit" class="btn btn-primary">업로드하고 검증</button></div></form></div>
+</div>
+{% else %}
+<section class="card empty-state"><h2 class="card-title">검증할 회차가 없습니다</h2><p class="card-subtitle">회차를 만든 뒤 팀원·매칭 데이터를 업로드해 주세요.</p><a class="btn btn-primary empty-action" href="{% url 'admin_dashboard' %}">Overview로 이동</a></section>
 {% endif %}
 {% endblock %}

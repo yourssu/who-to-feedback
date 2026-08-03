@@ -1,60 +1,56 @@
 {% extends 'base.html' %}
-{% block title %}내 리뷰 대시보드 · PeerFlow{% endblock %}
+{% block title %}내 리뷰 · PeerFlow{% endblock %}
 {% block content %}
 {% if cycle %}
 <section class="dashboard-mobile mobile-only">
+  <span class="eyebrow">{{ cycle.title }}</span>
   {% if is_all_completed %}
-  <h1 class="r-title">모든 리뷰를 완료했어요</h1>
-  <p class="r-body">내게 배정된 리뷰 · 제출률 100%</p>
-  <div class="progress"><span style="width:100%"></span></div>
-  <div class="banner">{{ cycle.reviewer_notice_message|default:"본인에게 배정된 리뷰만 표시되며 관리자 기능에는 접근할 수 없습니다." }}</div>
-  <div class="stack">
-    {% for item in assignments %}
-    <article class="r-card"><strong>{{ item.reviewee.name }}님 리뷰</strong><span> 제출 완료</span></article>
-    {% endfor %}
-  </div>
-  <button class="btn btn-block" type="button" disabled>결과 대기 중</button>
+    <h1 class="r-title">모든 리뷰를 완료했어요</h1>
+    <p class="r-body">정성스럽게 남긴 피드백이 동료의 다음 성장을 돕습니다.</p>
   {% else %}
-  <h1 class="r-title">안녕하세요, {{ request.session.member_name }}님</h1>
-  <p class="r-body">내게 배정된 리뷰 {{ assignments|length }}개 · 완료율 {{ completion_rate }}%</p>
-  <div class="progress"><span style="width:{{ completion_rate }}%"></span></div>
-  <div class="banner">{{ cycle.reviewer_notice_message|default:"본인에게 배정된 리뷰만 표시되며 관리자 기능에는 접근할 수 없습니다." }}</div>
-  <h2 class="dashboard-section-title">내게 배정된 리뷰</h2>
+    <h1 class="r-title">안녕하세요, {{ reviewer.name }}님</h1>
+    <p class="r-body">내게 배정된 리뷰 {{ assignments|length }}개 중 {{ submitted_count }}개를 완료했어요.</p>
+  {% endif %}
+  <div class="progress-block">
+    <div class="progress-label"><span>전체 진행률</span><strong>{{ completion_rate }}%</strong></div>
+    <div class="progress" role="progressbar" aria-label="리뷰 완료율" aria-valuenow="{{ completion_rate }}" aria-valuemin="0" aria-valuemax="100"><span style="width:{{ completion_rate }}%"></span></div>
+  </div>
+  <div class="banner">내게 배정된 리뷰만 표시됩니다. 작성한 답변은 익명으로 결과에 반영돼요.</div>
+  <h2 class="dashboard-section-title">내 리뷰</h2>
   <div class="stack">
     {% for item in assignments %}
-    <a href="{% url 'review_form' assignment_id=item.id %}" style="text-decoration:none; color:inherit;">
-    <article class="r-card">
-      <strong>{{ item.reviewee.name }}님 리뷰</strong>
-      <span>{% if item.is_submitted %}완료 · {{ cycle.questions.count }} / {{ cycle.questions.count }} 제출{% else %}미작성 · 평가 {{ cycle.questions.count }}개{% endif %}</span>
-      <small>{% if item.is_submitted %}제출됨{% else %}마감 {{ cycle.end_at|date:'m.d' }}{% endif %}</small>
+    <article class="r-card{% if not item.assignment.is_submitted %} r-card-active{% endif %}">
+      <div class="r-card-top"><strong>{{ item.assignment.reviewee.name }}님 리뷰</strong><span class="badge {% if item.assignment.is_submitted %}badge-success{% else %}badge-warning{% endif %}">{% if item.assignment.is_submitted %}제출 완료{% else %}작성 필요{% endif %}</span></div>
+      <span>{% if item.assignment.is_submitted %}모든 질문에 답변했어요{% else %}질문 {{ cycle.questions.count }}개 · 마감 {{ cycle.end_at|date:'m.d' }}{% endif %}</span>
+      {% if not item.assignment.is_submitted %}<a class="card-link" href="{% url 'review_form' assignment_id=item.assignment.id %}">리뷰 작성하기 <span aria-hidden="true">→</span></a>{% else %}<small>제출한 리뷰</small>{% endif %}
     </article>
-    </a>
-    {% endfor %}
+    {% empty %}<div class="card empty-state">현재 배정된 리뷰가 없어요.</div>{% endfor %}
   </div>
-  {% if assignments and first_unsubmitted_id %}<a class="btn btn-tonal btn-block" href="{% url 'review_form' assignment_id=first_unsubmitted_id %}">진행 중인 리뷰 보기</a>{% endif %}
-  {% endif %}
+  {% if is_all_completed %}<div class="banner banner-success">관리자 검토가 끝나면 결과를 Slack DM으로 안내해 드려요.</div>{% endif %}
 </section>
 
 <section class="dashboard-desktop desktop-only">
-  <div class="desktop-reviewer-top"><div>
-    <h1>내 리뷰 대시보드</h1>
-    <p class="page-description">{% if is_all_completed %}내게 배정된 모든 리뷰를 제출했어요.{% else %}내게 배정된 리뷰만 확인하고 작성할 수 있어요.{% endif %}</p>
-  </div></div>
-  <div class="banner {% if not is_all_completed %}banner-warning{% endif %}">{% if is_all_completed %}제출 완료 · 결과가 준비되면 Slack DM으로 알려드려요{% else %}진행률 {{ submitted_count }} / {{ assignments|length }} · 아직 작성할 리뷰가 있어요{% endif %}</div>
+  <div class="desktop-reviewer-top">
+    <div><span class="eyebrow">{{ cycle.title }}</span><h1>내 리뷰</h1><p class="page-description">함께한 경험을 돌아보고 동료의 다음 성장을 위한 피드백을 남겨 주세요.</p></div>
+    <span class="badge {% if is_all_completed %}badge-success{% else %}badge-info{% endif %}">{% if is_all_completed %}모두 완료{% else %}리뷰 진행 중{% endif %}</span>
+  </div>
+  <div class="dashboard-summary card">
+    <div><span class="summary-label">완료한 리뷰</span><strong>{{ submitted_count }}<small> / {{ assignments|length }}</small></strong></div>
+    <div class="summary-progress"><div class="progress-label"><span>전체 진행률</span><strong>{{ completion_rate }}%</strong></div><div class="progress" role="progressbar" aria-label="리뷰 완료율" aria-valuenow="{{ completion_rate }}" aria-valuemin="0" aria-valuemax="100"><span style="width:{{ completion_rate }}%"></span></div></div>
+    <p>{% if is_all_completed %}모든 리뷰를 제출했어요. 결과가 준비되면 Slack으로 알려드릴게요.{% else %}작성 중인 답변은 임시 저장할 수 있어요. 마감은 {{ cycle.end_at|date:'Y.m.d H:i' }}입니다.{% endif %}</p>
+  </div>
+  <h2 class="dashboard-section-title">배정된 리뷰</h2>
   <div class="dashboard-card-grid">
     {% for item in assignments %}
-    <a href="{% url 'review_form' assignment_id=item.id %}" style="text-decoration:none; color:inherit;">
-    <article class="r-card">
-      <strong>{{ item.reviewee.name }}님 리뷰</strong>
-      <span>{{ cycle.title }}</span>
-      <small>{% if item.is_submitted %}완료 · {{ cycle.questions.count }} / {{ cycle.questions.count }} 제출{% else %}미작성 · 평가 {{ cycle.questions.count }}개{% endif %}</small>
+    <article class="r-card{% if not item.assignment.is_submitted %} r-card-active{% endif %}">
+      <div class="r-card-top"><strong>{{ item.assignment.reviewee.name }}님 리뷰</strong><span class="badge {% if item.assignment.is_submitted %}badge-success{% else %}badge-warning{% endif %}">{% if item.assignment.is_submitted %}완료{% else %}작성 필요{% endif %}</span></div>
+      <span>{{ cycle.questions.count }}개의 질문 · {{ cycle.title }}</span>
+      {% if not item.assignment.is_submitted %}<a class="card-link" href="{% url 'review_form' assignment_id=item.assignment.id %}">리뷰 작성하기 <span aria-hidden="true">→</span></a>{% else %}<small>제출 완료</small>{% endif %}
     </article>
-    </a>
-    {% endfor %}
+    {% empty %}<div class="card empty-state">현재 배정된 리뷰가 없어요.</div>{% endfor %}
   </div>
-  {% if not is_all_completed and assignments and first_unsubmitted_id %}<a class="btn btn-primary dashboard-start" href="{% url 'review_form' assignment_id=first_unsubmitted_id %}">첫 리뷰 시작</a>{% endif %}
 </section>
 {% else %}
-<header class="empty-state"><h2 class="card-title">진행 중인 피어리뷰가 없어요</h2><p class="card-subtitle">새 회차가 시작되면 Slack DM으로 알려드릴게요.</p></header>
+<section class="empty-state-page"><span class="status-pill">대기 중</span><h1 class="page-title">진행 중인 피어리뷰가 없어요</h1><p class="page-description">새 회차가 시작되면 Slack DM으로 안전하게 알려드릴게요.</p></section>
 {% endif %}
 {% endblock %}

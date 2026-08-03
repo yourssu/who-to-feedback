@@ -1,8 +1,71 @@
-{% extends 'admin_custom/admin_base.html' %}{% block title %}Overview · PeerFlow Admin{% endblock %}{% block admin_content %}
-<header class="page-head"><div><h1 class="page-title">PeerFlow 관리자 센터</h1><p class="page-description">회차 생성부터 질문·매칭·진행·리포트 검토·발송까지 관리하세요.</p></div><div class="head-actions"><button class="btn btn-primary" type="button" data-modal-open="cycleModal">새 회차 만들기</button></div></header>
-{% if version_logs %}<section class="card" style="margin-bottom:16px"><div class="section-head"><div><h2 class="card-title">{{ cycle.title }} 변경 이력</h2><p class="card-subtitle">회차·질문지·리포트 템플릿의 버전 변경을 확인합니다.</p></div><a class="btn btn-small" href="{% url 'admin_dashboard' %}">대시보드로 돌아가기</a></div><div class="stack">{% for log in version_logs %}<article class="report-recipient"><strong>v{{ log.version }}</strong><span>{{ log.changed_summary }}</span><small>{{ log.created_at|date:'Y.m.d H:i' }}</small></article>{% empty %}<p class="muted">기록된 변경 이력이 없습니다.</p>{% endfor %}</div></section>{% endif %}
-{% with item=cycles_data|first %}<div class="metric-grid"><article class="card metric"><h2 class="card-title">{% if item %}{{ item.cycle.title }}{% else %}2026 상반기 피어리뷰{% endif %}</h2><p class="card-subtitle">{% if item %}{{ item.cycle.status }} · {{ item.cycle.submitted_assignments_count }} / {{ item.cycle.total_assignments_count }} 제출 완료{% else %}회차 대기{% endif %}</p><p class="assistive">{% if item %}마감까지 {{ item.cycle.end_at|timeuntil }}{% endif %}</p></article><article class="card metric"><h2 class="card-title">생성된 리포트 {% if item %}{{ item.cycle.reports.count }}{% else %}0{% endif %}개</h2><p class="card-subtitle">COMPLETED · 익명 HTML/PDF 준비 완료</p><p class="assistive">승인 후 Slack DM 배포</p></article><article class="card metric"><h2 class="card-title">빠른 작업</h2><div class="actions" style="margin-top:12px;flex-direction:column;align-items:stretch">{% if item %}<a class="btn btn-tonal" href="{% url 'admin_status_detail' cycle_id=item.cycle.id %}">미작성자 리마인더</a><a class="btn" href="{% url 'admin_reports' cycle_id=item.cycle.id %}">리포트 검토</a>{% endif %}</div></article></div>
-{% if item %}<article class="card"><div class="section-head"><h2 class="card-title">{{ item.cycle.title }} 진행률</h2><a href="{% url 'admin_cycle_history' cycle_id=item.cycle.id %}" class="btn btn-ghost btn-small">버전 변경 이력</a></div><span class="badge {% if item.cycle.status == 'ACTIVE' %}badge-info{% else %}badge-success{% endif %}">{{ item.cycle.get_status_display }}</span><div class="progress" style="margin-top:12px"><span style="width:{{ item.cycle.completion_rate }}%"></span></div><p class="assistive" style="margin-top:10px">마지막 동기화 2분 전 · {{ item.unsubmitted_reviewers_count }}명의 미작성자</p></article>
-<article class="card" style="margin-top:16px"><div class="section-head"><div><h2 class="card-title">📢 사용자 대시보드 공지 메시지 설정</h2><p class="card-subtitle">팀원이 로그인했을 때 대시보드 상단 배너로 표출되는 공지/안내 문구입니다.</p></div></div><form method="post" action="{% url 'admin_update_reviewer_notice' cycle_id=item.cycle.id %}" style="margin-top:12px">{% csrf_token %}<div class="form-group"><textarea class="form-control" name="reviewer_notice_message" rows="3" placeholder="사용자에게 보여줄 공지 메시지를 입력하세요." required>{{ item.cycle.reviewer_notice_message }}</textarea></div><button class="btn btn-primary btn-small" type="submit" style="margin-top:8px">공지 메시지 저장</button></form></article>
-{% else %}<div class="card empty-state">아직 회차가 없습니다. 첫 피어리뷰 회차를 만들어 보세요.</div>{% endif %}<div class="banner" style="margin-top:16px">전원 제출 완료 시 COMPLETED로 전환되며 결과 리포트 생성을 시작할 수 있습니다.</div>{% endwith %}
-<div class="modal" id="cycleModal" role="dialog" aria-modal="true" aria-labelledby="cycleTitle"><div class="modal-content"><div class="modal-head"><h2 class="modal-title" id="cycleTitle">새 피어리뷰 회차</h2><button type="button" class="modal-close" data-modal-close aria-label="닫기">×</button></div><form method="post" action="{% url 'admin_create_cycle' %}">{% csrf_token %}<div class="form-group"><label class="form-label" for="cycle-name">회차 이름</label><input class="form-control" id="cycle-name" name="title" placeholder="예: 2026 상반기 피어리뷰" required></div><div class="form-group"><label class="form-label" for="cycle-start">시작 일시 (선택 - 미지정 시 수동 시작)</label><input class="form-control" id="cycle-start" type="datetime-local" name="start_at"></div><div class="form-group"><label class="form-label" for="cycle-end">마감 일시 (선택 - 미지정 시 수동 마감)</label><input class="form-control" id="cycle-end" type="datetime-local" name="end_at"></div><div class="form-group"><label class="form-label" for="cycle-notice">사용자 대시보드 공지 메시지</label><textarea class="form-control" id="cycle-notice" name="reviewer_notice_message" rows="3" placeholder="본인에게 배정된 리뷰만 표시되며 관리자 기능에는 접근할 수 없습니다.">본인에게 배정된 리뷰만 표시되며 관리자 기능에는 접근할 수 없습니다.</textarea></div><div class="modal-actions"><button class="btn" type="button" data-modal-close>취소</button><button class="btn btn-primary" type="submit">회차 만들기</button></div></form></div></div>{% endblock %}
+{% extends 'admin_custom/admin_base.html' %}
+{% block title %}Overview · PeerFlow Admin{% endblock %}
+{% block admin_content %}
+<header class="page-head">
+  <div><span class="eyebrow">OPERATION CENTER</span><h1 class="page-title">피어리뷰 운영 현황</h1><p class="page-description">회차 준비부터 질문·매칭·진행 확인·리포트 발송까지 한 흐름으로 관리합니다.</p></div>
+  <div class="head-actions"><button class="btn btn-primary" type="button" data-modal-open="cycleModal">새 회차 만들기</button></div>
+</header>
+
+{% if version_logs %}
+<section class="card content-section">
+  <div class="section-head"><div><h2 class="card-title">{{ cycle.title }} 변경 이력</h2><p class="card-subtitle">회차 설정과 결과물 버전 변경을 시간순으로 확인합니다.</p></div><a class="btn btn-small" href="{% url 'admin_dashboard' %}">Overview로</a></div>
+  <div class="timeline-list">{% for log in version_logs %}<article class="timeline-item"><span>v{{ log.version }}</span><div><strong>{{ log.changed_summary }}</strong><small>{{ log.created_at|date:'Y.m.d H:i' }}</small></div></article>{% empty %}<p class="muted">기록된 변경 이력이 없습니다.</p>{% endfor %}</div>
+</section>
+{% endif %}
+
+{% if not version_logs %}
+{% with item=cycles_data|first %}
+<section class="overview-hero card card-raised">
+  <div>
+    <span class="status-pill {% if item and item.cycle.status == 'ACTIVE' %}status-pill-success{% endif %}">{% if item %}{{ item.cycle.get_status_display }}{% else %}회차 준비 전{% endif %}</span>
+    <h2>{% if item %}{{ item.cycle.title }}{% else %}첫 피어리뷰를 시작해 보세요{% endif %}</h2>
+    <p>{% if item %}{{ item.cycle.start_at|date:'Y.m.d' }} — {{ item.cycle.end_at|date:'Y.m.d' }}{% else %}새 회차를 만들면 질문과 매칭을 차례대로 설정할 수 있어요.{% endif %}</p>
+  </div>
+  {% if item %}<div class="overview-progress"><strong>{{ item.cycle.completion_rate }}%</strong><span>전체 제출률</span><div class="progress"><span style="width:{{ item.cycle.completion_rate }}%"></span></div></div>{% endif %}
+</section>
+
+<div class="metric-grid overview-metrics">
+  <article class="card metric"><span class="metric-label">제출 현황</span><strong class="metric-value">{% if item %}{{ item.cycle.submitted_assignments_count }}<small> / {{ item.cycle.total_assignments_count }}</small>{% else %}0{% endif %}</strong><p class="card-subtitle">완료된 리뷰</p></article>
+  <article class="card metric"><span class="metric-label">리포트</span><strong class="metric-value">{% if item %}{{ item.cycle.reports.count }}{% else %}0{% endif %}<small>개</small></strong><p class="card-subtitle">생성된 결과 파일</p></article>
+  <article class="card metric"><span class="metric-label">확인 필요</span><strong class="metric-value">{% if item %}{{ item.unsubmitted_reviewers_count }}{% else %}0{% endif %}<small>명</small></strong><p class="card-subtitle">리뷰 미완료자</p></article>
+</div>
+
+{% if item %}
+<section class="card content-section">
+  <div class="section-head"><div><h2 class="card-title">다음 작업</h2><p class="card-subtitle">현재 회차에 필요한 운영 작업으로 바로 이동합니다.</p></div><a class="btn btn-ghost btn-small" href="{% url 'admin_cycle_history' cycle_id=item.cycle.id %}">변경 이력</a></div>
+  <div class="quick-action-grid">
+    <a class="quick-action" href="{% url 'admin_questions' cycle_id=item.cycle.id %}"><span>01</span><strong>질문지 확인</strong><small>문항과 척도 설정</small></a>
+    <a class="quick-action" href="{% url 'admin_assignments' cycle_id=item.cycle.id %}"><span>02</span><strong>리뷰 매칭</strong><small>리뷰어와 대상 연결</small></a>
+    <a class="quick-action" href="{% url 'admin_status_detail' cycle_id=item.cycle.id %}"><span>03</span><strong>진행 상태</strong><small>제출과 리마인더 관리</small></a>
+    <a class="quick-action" href="{% url 'admin_reports' cycle_id=item.cycle.id %}"><span>04</span><strong>리포트 관리</strong><small>파일 검수와 발송</small></a>
+  </div>
+</section>
+<div class="banner">전원 제출이 완료된 뒤 결과 리포트를 생성하고, 검토를 거쳐 Slack DM으로 발송할 수 있어요.</div>
+{% else %}
+<section class="card empty-state"><h2 class="card-title">아직 회차가 없습니다</h2><p class="card-subtitle">상단의 ‘새 회차 만들기’에서 운영 기간을 먼저 정해 주세요.</p></section>
+{% endif %}
+{% endwith %}
+
+{% if cycles_data %}
+<section class="cycle-archive">
+  <div class="section-head"><div><h2 class="card-title">전체 회차</h2><p class="card-subtitle">이전 회차를 포함한 모든 운영 기록과 기능으로 이동합니다.</p></div><span class="badge">{{ cycles_data|length }}개 회차</span></div>
+  <div class="cycle-list">
+    {% for row in cycles_data %}
+    <article class="card cycle-item">
+      <div class="cycle-item-main">
+        <div><span class="status-pill {% if row.cycle.status == 'ACTIVE' %}status-pill-success{% elif row.cycle.status == 'CLOSED' %}status-pill-muted{% endif %}">{{ row.cycle.get_status_display }}</span><h3 class="card-title">{{ row.cycle.title }}</h3><p class="card-subtitle">{{ row.cycle.start_at|date:'Y.m.d H:i' }} — {{ row.cycle.end_at|date:'Y.m.d H:i' }} · {{ row.cycle.version }}</p></div>
+        <div class="cycle-item-progress"><strong>{{ row.cycle.completion_rate }}%</strong><div class="progress"><span style="width:{{ row.cycle.completion_rate }}%"></span></div><small>{{ row.cycle.submitted_assignments_count }} / {{ row.cycle.total_assignments_count }} 제출 · 리포트 {{ row.cycle.reports.count }}개</small></div>
+      </div>
+      <div class="cycle-actions"><a class="btn btn-small" href="{% url 'admin_questions' cycle_id=row.cycle.id %}">질문지</a><a class="btn btn-small" href="{% url 'admin_assignments' cycle_id=row.cycle.id %}">매칭</a><a class="btn btn-small" href="{% url 'admin_status_detail' cycle_id=row.cycle.id %}">진행 상태</a><a class="btn btn-small" href="{% url 'admin_reports' cycle_id=row.cycle.id %}">리포트</a><a class="btn btn-ghost btn-small" href="{% url 'admin_cycle_history' cycle_id=row.cycle.id %}">변경 이력</a></div>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<div class="modal" id="cycleModal" role="dialog" aria-modal="true" aria-labelledby="cycleTitle" aria-hidden="true">
+  <div class="modal-content"><div class="modal-head"><div><span class="eyebrow">NEW CYCLE</span><h2 class="modal-title" id="cycleTitle">새 피어리뷰 회차</h2></div><button type="button" class="modal-close" data-modal-close aria-label="닫기">×</button></div>
+  <form method="post" action="{% url 'admin_create_cycle' %}">{% csrf_token %}<div class="form-group"><label class="form-label" for="cycle-name">회차 이름</label><input class="form-control" id="cycle-name" name="title" placeholder="예: 2026 하반기 피어리뷰" required></div><div class="form-group"><label class="form-label" for="cycle-start">시작 일시</label><input class="form-control" id="cycle-start" type="datetime-local" name="start_at" required></div><div class="form-group"><label class="form-label" for="cycle-end">마감 일시</label><input class="form-control" id="cycle-end" type="datetime-local" name="end_at" required></div><div class="modal-actions"><button class="btn" type="button" data-modal-close>취소</button><button class="btn btn-primary" type="submit">회차 만들기</button></div></form></div>
+</div>
+{% endif %}
+{% endblock %}

@@ -2,21 +2,29 @@
 {% block title %}{{ assignment.reviewee.name }} 피어리뷰 · PeerFlow{% endblock %}
 {% block content %}
 <header class="page-head review-page-head">
-  <div><h1 class="page-title">{{ assignment.reviewee.name }}님 리뷰</h1><p class="page-description">총 {{ questions_data|length }}개의 질문에 차례대로 답해 주세요.</p></div>
+  <div><span class="eyebrow">{{ cycle.title }}</span><h1 class="page-title">{{ assignment.reviewee.name }}님 리뷰</h1><p class="page-description">{% if is_locked %}마감된 리뷰의 답변은 수정할 수 없어요.{% else %}총 {{ questions_data|length }}개의 질문에 차례대로 답해 주세요.{% endif %}</p></div>
   <a class="btn btn-ghost" href="{% url 'review_dashboard' %}">목록으로</a>
 </header>
+{% if is_locked %}
+<section class="card card-raised empty-state locked-state">
+  <span class="status-pill status-pill-warning">수정 마감</span>
+  <h2 class="card-title">제출한 리뷰가 잠겼어요</h2>
+  <p class="card-subtitle">회차 마감 이후에는 제출한 답변을 수정할 수 없습니다.</p>
+  <a class="btn btn-primary" href="{% url 'review_dashboard' %}">내 리뷰로 돌아가기</a>
+</section>
+{% else %}
 <form method="post" class="wizard" id="reviewForm" data-review-wizard data-assignment-id="{{ assignment.id }}">
   {% csrf_token %}
   <div class="wizard-progress-shell"><div class="progress-label"><span>작성 진행률</span><span><span data-current-step>0</span> / {{ questions_data|length }}</span></div><div class="progress"><span data-wizard-progress style="width:0"></span></div></div>
-  <section class="wizard-overview card card-raised" style="margin-top:24px">
+  <section class="wizard-overview card card-raised wizard-surface">
     <a class="r-back" href="{% url 'review_dashboard' %}">‹&nbsp;&nbsp;대시보드</a>
-    <p class="question-kicker" style="margin-top:16px">리뷰 작성 안내 · 총 {{ questions_data|length }}문항</p>
+    <p class="question-kicker question-kicker-spaced">리뷰 작성 안내 · 총 {{ questions_data|length }}문항</p>
     <h2 class="question-title">{{ questions_data|length }}개의 질문에 답해 주세요</h2>
     <p class="r-help">답변을 차례대로 작성한 뒤 마지막 단계에서 제출합니다.</p>
-    <div class="actions" style="margin-top:16px"><button class="btn btn-primary" type="button" data-wizard-start>리뷰 시작</button></div>
+    <div class="actions wizard-start-actions"><button class="btn btn-primary" type="button" data-wizard-start>리뷰 시작</button></div>
   </section>
   {% for item in questions_data %}
-  <section class="wizard-step question-box" style="margin-top:24px">
+  <section class="wizard-step question-box wizard-surface">
     {% if forloop.first %}<a class="r-back" href="{% url 'review_dashboard' %}">‹&nbsp;&nbsp;대시보드</a>{% else %}<button class="r-back btn-ghost" type="button" data-wizard-prev>‹&nbsp;&nbsp;이전 질문</button>{% endif %}
     <p class="question-kicker">{{ forloop.counter }} / {{ questions_data|length }} · {{ item.question.question_type }}</p>
     <h2 class="question-title">{{ item.question.content }}</h2>
@@ -28,30 +36,31 @@
     {% if item.question.question_type == 'RATING' %}
     <p class="r-help">관리자 설정에 따라 숫자 1–5 또는 텍스트 5단계 라벨이 표시됩니다.</p>
     <div class="score-grid">
-      {% for opt in item.scale_options %}<div class="rating-option"><input type="radio" name="q_{{ item.question.id }}_rating" id="q_{{ item.question.id }}_r_{{ opt.val }}" value="{{ opt.val }}" {% if item.existing_answer and item.existing_answer.rating_value == opt.val %}checked{% endif %} required><label for="q_{{ item.question.id }}_r_{{ opt.val }}">{{ opt.label }}</label></div>{% endfor %}
-      <span class="rating-value" data-rating-value>{% if item.existing_answer and item.existing_answer.rating_value %}{{ item.existing_answer.rating_value }} / 5{% else %}0 / 5{% endif %}</span>
+      {% for opt in item.scale_options %}<div class="rating-option"><input type="radio" name="q_{{ item.question.id }}_rating" id="q_{{ item.question.id }}_r_{{ opt.val }}" value="{{ opt.val }}" {% if item.draft_rating == opt.val %}checked{% endif %} required><label for="q_{{ item.question.id }}_r_{{ opt.val }}">{{ opt.label }}</label></div>{% endfor %}
+      <span class="rating-value" data-rating-value>{% if item.draft_rating %}{{ item.draft_rating }} / 5{% else %}0 / 5{% endif %}</span>
     </div>
     <p class="assistive mobile-only">1 전혀 그렇지 않음&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;5 매우 그렇다</p>
-    <div class="banner desktop-only" style="margin-top:24px">평가 근거를 다음 문항에서 자세히 남길 수 있어요.</div>
+    <div class="banner desktop-only question-banner">평가 근거를 다음 문항에서 자세히 남길 수 있어요.</div>
     {% elif item.question.question_type == 'TEXT' %}
     <p class="r-help">상황과 행동을 중심으로 작성하면 동료에게 더 도움이 됩니다.</p>
     <label class="card-title" for="q-{{ item.question.id }}">익명 피드백</label>
-    <textarea class="form-control" id="q-{{ item.question.id }}" name="q_{{ item.question.id }}_text" rows="6" maxlength="500" data-count="#count-{{ item.question.id }}" placeholder="함께 일하며 좋았던 점과 다음에 시도해 볼 점을 작성해 주세요." data-mobile-placeholder="함께 일하며 좋았던 점과 다음에 시도해 볼 점을 작성해 주세요." data-desktop-placeholder="함께 일하며 좋았던 점과 다음에 시도해 볼 점을 작성해 주세요." required>{% if item.existing_answer %}{{ item.existing_answer.answer_text }}{% endif %}</textarea>
+    <textarea class="form-control" id="q-{{ item.question.id }}" name="q_{{ item.question.id }}_text" rows="6" maxlength="500" data-count="#count-{{ item.question.id }}" placeholder="함께 일하며 좋았던 점과 다음에 시도해 볼 점을 작성해 주세요." data-mobile-placeholder="함께 일하며 좋았던 점과 다음에 시도해 볼 점을 작성해 주세요." data-desktop-placeholder="함께 일하며 좋았던 점과 다음에 시도해 볼 점을 작성해 주세요." required>{{ item.draft_text }}</textarea>
     <div class="text-counter"><span id="count-{{ item.question.id }}">0</span> / 500</div>
-    <div class="banner" style="margin-top:14px"><span class="mobile-only">피드백은 익명으로 종합 리포트에 반영됩니다.</span><span class="desktop-only">응답은 익명으로 집계되어 솔직한 피드백을 남길 수 있어요.</span></div>
+    <div class="banner question-banner"><span class="mobile-only">피드백은 익명으로 종합 리포트에 반영됩니다.</span><span class="desktop-only">응답은 익명으로 집계되어 솔직한 피드백을 남길 수 있어요.</span></div>
     {% elif item.question.question_type == 'SINGLE_CHOICE' %}
     <p class="r-help">하나만 선택할 수 있어요.</p>
-    <div class="option-group">{% for opt in item.options %}<label class="option-item"><input type="radio" name="q_{{ item.question.id }}_single" value="{{ opt.id }}" {% if item.existing_selected and opt.id in item.existing_selected %}checked{% endif %} required><span>{{ opt.option_text }}</span></label>{% endfor %}</div>
+    <div class="option-group">{% for opt in item.options %}<label class="option-item"><input type="radio" name="q_{{ item.question.id }}_single" value="{{ opt.id }}" {% if item.draft_single == opt.id %}checked{% endif %} required><span>{{ opt.option_text }}</span></label>{% endfor %}</div>
     {% elif item.question.question_type == 'MULTIPLE_CHOICE' %}
     <p class="r-help">여러 개를 선택할 수 있어요.</p>
-    <div class="option-group">{% for opt in item.options %}<label class="option-item"><input type="checkbox" name="q_{{ item.question.id }}_multi" value="{{ opt.id }}" {% if item.existing_selected and opt.id in item.existing_selected %}checked{% endif %}><span>{{ opt.option_text }}</span></label>{% endfor %}</div>
-    <div class="banner" style="margin-top:24px">선택한 응답은 리뷰 제출 시 현재 매칭에 저장됩니다.</div>
+    <div class="option-group">{% for opt in item.options %}<label class="option-item"><input type="checkbox" name="q_{{ item.question.id }}_multi" value="{{ opt.id }}" {% if opt.id in item.draft_multi %}checked{% endif %}><span>{{ opt.option_text }}</span></label>{% endfor %}</div>
+    <div class="banner question-banner">선택한 응답은 리뷰 제출 시 현재 매칭에 저장됩니다.</div>
     {% endif %}
     <div class="wizard-actions">
       {% if item.question.question_type == 'TEXT' %}<button class="btn btn-tonal mobile-only" type="button" data-save-draft>임시 저장</button>{% endif %}
       {% if forloop.last %}<button class="btn btn-primary" type="submit">{% if assignment.is_submitted %}수정 내용 저장{% else %}리뷰 제출{% endif %}</button>{% else %}<button class="btn btn-primary" type="button" data-wizard-next>저장하고 다음</button>{% endif %}
     </div>
   </section>
-  {% empty %}<div class="card empty-state" style="margin-top:24px">등록된 질문이 없습니다. 관리자에게 문의해 주세요.</div>{% endfor %}
+  {% empty %}<div class="card empty-state wizard-surface">등록된 질문이 없습니다. 관리자에게 문의해 주세요.</div>{% endfor %}
 </form>
+{% endif %}
 {% endblock %}

@@ -1,22 +1,26 @@
 document.documentElement.classList.add('js');
 (function(){
   var root=document.documentElement;
-  var saved=localStorage.getItem('peerflow-theme');
+  var saved=null;
+  try{saved=localStorage.getItem('peerflow-theme')}catch(e){}
   if(saved) root.dataset.theme=saved;
+  var syncThemeControls=function(){var dark=root.dataset.theme==='dark';document.querySelectorAll('[data-theme-toggle]').forEach(function(button){button.setAttribute('aria-pressed',String(dark));button.setAttribute('aria-label',dark?'라이트 모드로 전환':'다크 모드로 전환');button.textContent=dark?'☀':'◐'})};
+  var closeModal=function(modal){if(!modal)return;modal.classList.remove('open');modal.setAttribute('aria-hidden','true');document.body.classList.remove('modal-open')};
+  syncThemeControls();
   document.addEventListener('click',function(e){
     var toggle=e.target.closest('[data-theme-toggle]');
-    if(toggle){var next=root.dataset.theme==='dark'?'light':'dark';root.dataset.theme=next;localStorage.setItem('peerflow-theme',next);return}
+    if(toggle){var next=root.dataset.theme==='dark'?'light':'dark';root.dataset.theme=next;try{localStorage.setItem('peerflow-theme',next)}catch(err){}syncThemeControls();return}
     var opener=e.target.closest('[data-modal-open]');
-    if(opener){var modal=document.getElementById(opener.dataset.modalOpen);if(modal)modal.classList.add('open');return}
+    if(opener){var modal=document.getElementById(opener.dataset.modalOpen);if(modal){modal.classList.add('open');modal.setAttribute('aria-hidden','false');document.body.classList.add('modal-open');var first=modal.querySelector('input,select,textarea,button');if(first)setTimeout(function(){first.focus()},0)}return}
     var closer=e.target.closest('[data-modal-close]');
-    if(closer){closer.closest('.modal').classList.remove('open');return}
-    if(e.target.classList.contains('modal'))e.target.classList.remove('open');
+    if(closer){closeModal(closer.closest('.modal'));return}
+    if(e.target.classList.contains('modal'))closeModal(e.target);
   });
-  document.addEventListener('keydown',function(e){if(e.key==='Escape')document.querySelectorAll('.modal.open').forEach(function(m){m.classList.remove('open')})});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')document.querySelectorAll('.modal.open').forEach(closeModal)});
   document.querySelectorAll('form[data-confirm]').forEach(function(form){form.addEventListener('submit',function(e){if(!window.confirm(form.dataset.confirm))e.preventDefault()})});
   document.querySelectorAll('[data-count]').forEach(function(el){var out=document.querySelector(el.dataset.count);var update=function(){out.textContent=el.value.length};el.addEventListener('input',update);update()});
   document.querySelectorAll('[data-toggle-target]').forEach(function(el){var update=function(){var target=document.querySelector(el.dataset.toggleTarget);if(target)target.hidden=el.value!==el.dataset.toggleValue};el.addEventListener('change',update);update()});
-  document.querySelectorAll('[data-filter-select]').forEach(function(filter){filter.addEventListener('change',function(){var target=document.querySelector(filter.dataset.filterSelect);var first=null;Array.from(target.options).forEach(function(o){var show=!filter.value||o.dataset.department===filter.value;o.hidden=!show;if(show&&!first)first=o});if(first)target.value=first.value})});
+  document.querySelectorAll('[data-filter-select]').forEach(function(filter){filter.addEventListener('change',function(){var target=document.querySelector(filter.dataset.filterSelect);if(!target)return;var first=null;Array.from(target.options).forEach(function(o){var show=!filter.value||o.dataset.department===filter.value;o.hidden=!show;if(show&&!first)first=o});if(first)target.value=first.value})});
   document.querySelectorAll('[data-mobile-placeholder]').forEach(function(field){var media=window.matchMedia('(max-width:900px)');var update=function(){field.placeholder=media.matches?field.dataset.mobilePlaceholder:field.dataset.desktopPlaceholder};media.addEventListener('change',update);update()});
   document.addEventListener('change',function(e){
     if(!e.target.matches('.rating-option input[type="radio"]'))return;

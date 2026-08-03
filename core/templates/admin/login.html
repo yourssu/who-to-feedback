@@ -1,1 +1,21 @@
-{% load static %}<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>관리자 로그인 · PeerFlow</title><script>try{var t=localStorage.getItem('peerflow-theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script><link rel="stylesheet" href="{% static 'css/style.css' %}"></head><body><main style="min-height:100vh;display:grid;place-items:center;padding:24px"><section class="login-panel card card-raised"><a class="brand" href="{% url 'login' %}" style="padding:0 0 28px"><strong>PEERFLOW</strong><span>Admin workspace</span></a><h1 class="page-title">관리자 로그인</h1><p class="login-copy" style="margin-top:6px">Django Superuser 계정으로 로그인해 주세요.</p>{% if form.errors %}<div class="alert alert-error">아이디 또는 비밀번호가 올바르지 않습니다.</div>{% endif %}<form method="post" action="{{ app_path }}">{% csrf_token %}<div class="form-group"><label class="form-label" for="id_username">관리자 아이디</label><input class="form-control" id="id_username" name="username" autocomplete="username" required autofocus></div><div class="form-group"><label class="form-label" for="id_password">비밀번호</label><input class="form-control" id="id_password" type="password" name="password" autocomplete="current-password" required></div><input type="hidden" name="next" value="{{ next }}"><button class="btn btn-primary btn-block" type="submit">관리자 센터 로그인</button></form><a class="btn btn-block" href="{% url 'login' %}" style="margin-top:12px">리뷰어 PIN 로그인으로</a></section></main><script src="{% static 'js/app.js' %}"></script></body></html>
+{% extends 'base.html' %}
+{% block title %}관리자 로그인 · PeerFlow{% endblock %}
+{% block body_class %}admin-app auth-page{% endblock %}
+{% block flash_messages %}{% endblock %}
+{% block content %}
+<section class="login-wrap admin-login-wrap">
+  <div class="login-story desktop-only" aria-hidden="true">
+    <div class="login-story-copy"><span class="eyebrow">YOURSSU · ADMIN</span><h1 class="login-title">리뷰의 시작부터<br>전달까지 한 흐름으로.</h1><p class="login-copy">질문과 매칭, 진행 상황과 결과 발송을 차분하고 정확하게 운영합니다.</p></div>
+    <div class="login-story-note"><strong>PeerFlow Operation Center</strong><span>관리자 전용 워크스페이스</span></div>
+  </div>
+  <div class="login-panel">
+    <a class="auth-brand" href="{% url 'login' %}"><strong>PeerFlow</strong><span>YOURSSU ADMIN</span></a>
+    <span class="status-pill">관리자 전용</span>
+    <h1 class="login-title">관리자 로그인</h1>
+    <p class="login-copy">Django Superuser 계정으로 로그인해 주세요.</p>
+    {% if form.errors %}<div class="alert alert-error" role="alert">아이디 또는 비밀번호가 올바르지 않습니다.</div>{% endif %}
+    <form method="post" action="{{ app_path }}">{% csrf_token %}<div class="form-group"><label class="form-label" for="id_username">관리자 아이디</label><input class="form-control" id="id_username" name="username" value="{{ form.username.value|default:'' }}" autocomplete="username" required autofocus></div><div class="form-group"><label class="form-label" for="id_password">비밀번호</label><input class="form-control" id="id_password" type="password" name="password" autocomplete="current-password" required></div><input type="hidden" name="next" value="{{ next }}"><button class="btn btn-primary btn-block" type="submit">관리자 센터 로그인</button></form>
+    <a class="btn btn-ghost btn-block admin-login-back" href="{% url 'login' %}">리뷰어 PIN 로그인으로</a>
+  </div>
+</section>
+{% endblock %}

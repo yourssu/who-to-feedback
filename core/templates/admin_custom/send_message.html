@@ -1,108 +1,17 @@
 {% extends 'admin_custom/admin_base.html' %}
-{% block title %}Slack DM 메시지 전송 · PeerFlow Admin{% endblock %}
+{% block title %}Slack DM · PeerFlow Admin{% endblock %}
 {% block admin_content %}
-<header class="page-head">
-  <div>
-    <h1 class="page-title">Slack DM 메시지 전송</h1>
-    <p class="page-description">특정 팀원·전체 팀원·회차 미작성자를 선택해 자유 메시지를 즉시 전송합니다.</p>
-  </div>
-  <button class="btn btn-primary" type="submit" form="slack-message-form">Slack DM 즉시 전송</button>
-</header>
+<header class="page-head"><div><span class="eyebrow">SLACK MESSAGE</span><h1 class="page-title">Slack DM</h1><p class="page-description">특정 팀원 또는 전체 팀원에게 운영 안내를 즉시 전송합니다.</p></div><button class="btn btn-primary" type="submit" form="slack-message-form" {% if not members %}disabled{% endif %}>DM 전송</button></header>
+<form method="post" action="{% url 'admin_send_message' %}" id="slack-message-form">{% csrf_token %}<div class="message-workspace">
+  <section class="card message-recipient-card"><div><h2 class="card-title">수신자</h2><p class="card-subtitle">한 번에 한 가지 방식으로 대상을 지정합니다.</p></div><div class="recipient-mode-list" role="radiogroup" aria-label="수신 대상"><label class="recipient-mode selected"><input type="radio" name="recipient_type" value="SPECIFIC" checked><span><strong>특정 팀원</strong><small>목록에서 한 명 선택</small></span></label><label class="recipient-mode"><input type="radio" name="recipient_type" value="ALL"><span><strong>전체 팀원</strong><small>등록된 팀원 {{ members|length }}명</small></span></label><a class="recipient-mode recipient-mode-link" href="{% url 'admin_status' %}"><span><strong>회차 미작성자</strong><small>진행 상태에서 리마인더 발송 →</small></span></a></div><div class="form-group recipient-member-field"><label class="form-label" for="memberSelect">수신 팀원</label><select class="form-control" id="memberSelect" name="member_id" {% if not members %}disabled{% endif %}>{% for m in members %}<option value="{{ m.id }}">{{ m.name }} · {{ m.slack_user_id|default:'Slack ID 없음' }}</option>{% endfor %}</select></div><div class="selected-recipients"><span class="metric-label">선택된 수신자</span><strong id="recipientPreview">{% if members %}{{ members.0.name }} · {{ members.0.slack_user_id|default:'Slack ID 없음' }}{% else %}등록된 팀원이 없습니다.{% endif %}</strong></div></section>
+  <section class="card message-composer-card"><div><h2 class="card-title">메시지 작성</h2><p class="card-subtitle">전송 전 오른쪽 미리보기에서 문구를 확인하세요.</p></div><div class="form-group message-input-wrap"><label class="sr-only" for="messageText">Slack 메시지</label><textarea class="form-control" id="messageText" name="message_text" rows="6" maxlength="500" data-count="#messageCount" required>안녕하세요. {% if cycle %}{{ cycle.title }}{% else %}피어리뷰{% endif %} 안내입니다.
+아직 작성하지 않은 리뷰가 있다면 PeerFlow에서 확인해 주세요.{% if cycle %}
 
-<form method="post" action="{% url 'admin_send_message' %}" id="slack-message-form">
-  {% csrf_token %}
-  <div class="message-workspace">
-    <section class="card message-recipient-card">
-      <h2 class="card-title">수신자 선택</h2>
-      <p class="card-subtitle">한 번에 한 가지 방식으로 대상을 지정합니다.</p>
-      <div class="recipient-mode-list" role="radiogroup" aria-label="수신 대상">
-        <label class="recipient-mode selected">
-          <input type="radio" name="recipient_type" value="SPECIFIC" checked>
-          <span><strong>특정 팀원</strong><small>팀원 목록에서 직접 선택</small></span>
-        </label>
-        <label class="recipient-mode">
-          <input type="radio" name="recipient_type" value="ALL">
-          <span><strong>전체 팀원</strong><small>등록된 팀원 {{ members|length }}명</small></span>
-        </label>
-        <div class="recipient-mode unavailable" aria-disabled="true" title="회차 미작성자 직접 발송은 백엔드 준비 중">
-          <span><strong>특정 회차 미작성자</strong><small>백엔드 연동 준비 중</small></span>
-        </div>
-      </div>
-      <div class="form-group recipient-member-field">
-        <label class="form-label" for="memberSelect">수신 팀원</label>
-        <select class="form-control" id="memberSelect" name="member_id">
-          {% for m in members %}<option value="{{ m.id }}">{{ m.name }} · {{ m.slack_user_id|default:'Slack ID 없음' }}</option>{% endfor %}
-        </select>
-      </div>
-      <div class="selected-recipients">
-        <strong>선택된 수신자 1명</strong>
-        <p id="recipientPreview">{% if members %}{{ members.0.name }} · {{ members.0.slack_user_id|default:'Slack ID 없음' }}{% else %}등록된 팀원이 없습니다.{% endif %}</p>
-      </div>
-    </section>
-
-    <section class="card message-composer-card">
-      <h2 class="card-title">메시지 작성</h2>
-      <p class="card-subtitle">공지·안내 문구를 자유롭게 입력합니다.</p>
-      <div class="form-group message-input-wrap">
-        <textarea class="form-control" id="messageText" name="message_text" rows="6" maxlength="500" data-count="#messageCount" required>안녕하세요. 2026 상반기 피어리뷰 마감이 8월 15일 18:00입니다.
-아직 작성하지 않은 리뷰를 확인해 주세요.
-
-PeerFlow에서 바로 이어서 작성할 수 있습니다.</textarea>
-        <span class="assistive"><span id="messageCount">0</span> / 500</span>
-      </div>
-      <h3 class="form-label message-preview-title">Slack DM 미리보기</h3>
-      <div class="slack-preview">
-        <strong>PeerFlow</strong>
-        <p id="previewRecipient">{% if members %}{{ members.0.name }}님에게{% else %}선택한 팀원에게{% endif %}</p>
-        <p id="messagePreview"></p>
-      </div>
-    </section>
-  </div>
-
-  <section class="card message-send-summary">
-    <div><h2 class="card-title" id="sendSummary">선택한 수신자 1명에게 전송</h2><p class="assistive">Slack API chat_postMessage · 유효한 Slack User ID로 즉시 발송</p></div>
-    <button class="btn btn-primary" type="submit">지금 전송</button>
-  </section>
-</form>
-
-<div class="message-utility-actions">
-  <form method="post" action="{% url 'admin_send_test_dm' %}">{% csrf_token %}<button type="submit" class="btn">관리자 테스트 DM 보내기</button></form>
-  {% if failed_logs %}<form method="post" action="{% url 'admin_retry_failed_messages' %}">{% csrf_token %}<button type="submit" class="btn btn-tonal">실패한 DM {{ failed_logs|length }}건 재발송</button></form>{% endif %}
-  {% if cycle %}<a class="btn btn-tonal" href="{% url 'admin_delivery_checklist' cycle_id=cycle.id %}">발송 대상 체크리스트 보기</a>{% endif %}
-</div>
+마감: {{ cycle.end_at|date:'Y.m.d H:i' }}{% endif %}</textarea><span class="assistive message-count"><span id="messageCount">0</span> / 500</span></div><h3 class="form-label message-preview-title">Slack DM 미리보기</h3><div class="slack-preview"><div class="slack-app-row"><span class="slack-app-mark">P</span><div><strong>PeerFlow</strong><small>APP</small></div></div><p id="previewRecipient">{% if members %}{{ members.0.name }}님에게{% else %}선택한 팀원에게{% endif %}</p><p id="messagePreview"></p></div></section>
+</div><section class="card message-send-summary"><div><h2 class="card-title" id="sendSummary">선택한 수신자 1명에게 전송</h2><p class="assistive">Slack User ID가 연결된 팀원에게 즉시 발송됩니다.</p></div><button class="btn btn-primary" type="submit" {% if not members %}disabled{% endif %}>지금 전송</button></section></form>
+<div class="message-utility-actions"><form method="post" action="{% url 'admin_send_test_dm' %}">{% csrf_token %}<button type="submit" class="btn">관리자 테스트 DM</button></form>{% if failed_logs %}<form method="post" action="{% url 'admin_retry_failed_messages' %}">{% csrf_token %}<button type="submit" class="btn btn-tonal">실패한 DM {{ failed_logs|length }}건 재발송</button></form>{% endif %}{% if cycle %}<a class="btn btn-tonal" href="{% url 'admin_delivery_checklist' cycle_id=cycle.id %}">발송 체크리스트</a>{% endif %}</div>
+{% if failed_logs %}<section class="card failed-message-section"><div class="section-head"><div><h2 class="card-title">실패한 DM</h2><p class="card-subtitle">오류 내용을 확인한 뒤 상단의 재발송을 실행하세요.</p></div><span class="badge badge-warning">{{ failed_logs|length }}건</span></div><div class="data-list">{% for log in failed_logs %}<article class="failed-message-row"><div><strong>{{ log.member.name }}</strong><span>{{ log.get_delivery_type_display }} · {{ log.sent_at|date:'Y.m.d H:i' }}</span></div><p>{{ log.error_message|default:'Slack API 응답을 확인해 주세요.' }}</p></article>{% endfor %}</div></section>{% endif %}
 {% endblock %}
-{% block scripts %}
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-  var input = document.getElementById('messageText');
-  var preview = document.getElementById('messagePreview');
-  var member = document.getElementById('memberSelect');
-  var recipientPreview = document.getElementById('recipientPreview');
-  var previewRecipient = document.getElementById('previewRecipient');
-  var summary = document.getElementById('sendSummary');
-  var modes = Array.prototype.slice.call(document.querySelectorAll('.recipient-mode input'));
-
-  function updateMessage() { if (input && preview) preview.textContent = input.value; }
-  function updateRecipient() {
-    var all = document.querySelector('input[name="recipient_type"][value="ALL"]');
-    var selected = member && member.options[member.selectedIndex];
-    document.querySelectorAll('.recipient-mode').forEach(function (mode) { mode.classList.toggle('selected', !!mode.querySelector('input:checked')); });
-    if (all && all.checked) {
-      if (recipientPreview) recipientPreview.textContent = '등록된 팀원 {{ members|length }}명';
-      if (previewRecipient) previewRecipient.textContent = '전체 팀원에게';
-      if (summary) summary.textContent = '전체 팀원 {{ members|length }}명에게 전송';
-      return;
-    }
-    if (selected) {
-      if (recipientPreview) recipientPreview.textContent = selected.textContent;
-      if (previewRecipient) previewRecipient.textContent = selected.textContent.split(' · ')[0] + '님에게';
-      if (summary) summary.textContent = '선택한 수신자 1명에게 전송';
-    }
-  }
-  if (input) input.addEventListener('input', updateMessage);
-  if (member) member.addEventListener('change', updateRecipient);
-  modes.forEach(function (mode) { mode.addEventListener('change', updateRecipient); });
-  updateMessage(); updateRecipient();
-});
-</script>
-{% endblock %}
+{% block scripts %}<script>
+document.addEventListener('DOMContentLoaded',function(){var input=document.getElementById('messageText'),preview=document.getElementById('messagePreview'),member=document.getElementById('memberSelect'),recipientPreview=document.getElementById('recipientPreview'),previewRecipient=document.getElementById('previewRecipient'),summary=document.getElementById('sendSummary'),modes=Array.prototype.slice.call(document.querySelectorAll('.recipient-mode input'));function updateMessage(){if(input&&preview)preview.textContent=input.value}function updateRecipient(){var all=document.querySelector('input[name="recipient_type"][value="ALL"]'),selected=member&&member.options[member.selectedIndex];document.querySelectorAll('.recipient-mode').forEach(function(mode){mode.classList.toggle('selected',!!mode.querySelector('input:checked'))});if(member)member.disabled=!!(all&&all.checked);if(all&&all.checked){if(recipientPreview)recipientPreview.textContent='등록된 팀원 {{ members|length }}명';if(previewRecipient)previewRecipient.textContent='전체 팀원에게';if(summary)summary.textContent='전체 팀원 {{ members|length }}명에게 전송';return}if(selected){if(recipientPreview)recipientPreview.textContent=selected.textContent;if(previewRecipient)previewRecipient.textContent=selected.textContent.split(' · ')[0]+'님에게';if(summary)summary.textContent='선택한 수신자 1명에게 전송'}}if(input)input.addEventListener('input',updateMessage);if(member)member.addEventListener('change',updateRecipient);modes.forEach(function(mode){mode.addEventListener('change',updateRecipient)});updateMessage();updateRecipient()});
+</script>{% endblock %}
