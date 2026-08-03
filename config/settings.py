@@ -101,3 +101,8 @@ MEDIA_ROOT = BASE_DIR / 'media'
 SLACK_BOT_TOKEN = os.environ.get('SLACK_BOT_TOKEN', '')
 MOCK_SLACK_MODE = os.environ.get('MOCK_SLACK_MODE', 'True').lower() in ('true', '1', 't')
 
+# Reverse Proxy / SSL (Cloudflare & Nginx)
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_X_FORWARDED_HOST = True
+USE_X_FORWARDED_PORT = True
+
