@@ -18,15 +18,17 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 애플리케이션 소스 복사
 COPY . /app/
 
+# entrypoint 스크립트 실행 권한 부여
+RUN chmod +x /app/entrypoint.sh
+
 # 환경 변수 설정
 ENV PYTHONUNBUFFERED=1 \
     PORT=8000
 
-# Django 정적 파일 모으기
-RUN python manage.py collectstatic --noinput || true
-
 # 외부 노출 포트
 EXPOSE 8000
 
-# Gunicorn WSGI 서버 실행 (워커 3개, 타임아웃 120초)
+# 엔트리포인트 및 Gunicorn WSGI 서버 실행 (워커 3개, 타임아웃 120초)
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "120", "config.wsgi:application"]
+

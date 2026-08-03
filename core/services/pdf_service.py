@@ -8,12 +8,22 @@ try:
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
+    import matplotlib.font_manager as fm
     import numpy as np
-    plt.rcParams['font.family'] = 'AppleGothic'
+
+    font_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'static', 'fonts', 'Pretendard-Regular.ttf')
+    if os.path.exists(font_path):
+        fm.fontManager.addfont(font_path)
+        font_prop = fm.FontProperties(fname=font_path)
+        plt.rcParams['font.family'] = font_prop.get_name()
+    else:
+        plt.rcParams['font.family'] = 'NanumGothic'
+
     plt.rcParams['axes.unicode_minus'] = False
     HAS_MATPLOTLIB = True
 except ImportError:
     HAS_MATPLOTLIB = False
+
 
 from django.conf import settings
 from django.template import Template, Context
@@ -388,8 +398,12 @@ class PDFReportService:
                 from PIL import Image
 
                 with sync_playwright() as p:
-                    browser = p.chromium.launch(headless=True)
+                    browser = p.chromium.launch(
+                        headless=True,
+                        args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+                    )
                     page = browser.new_page(
+
                         viewport={"width": 6144, "height": 3456},
                         device_scale_factor=2
                     )
