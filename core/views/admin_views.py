@@ -47,7 +47,7 @@ def superuser_required(view_func):
                 return view_func(request, *args, **kwargs)
 
         messages.error(request, "관리자 권한이 필요합니다.")
-        return redirect('login')
+        return redirect(f"/admin/login/?next={request.path}")
     return _wrapped_view
 
 
