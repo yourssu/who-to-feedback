@@ -6,7 +6,7 @@
 
 ## 1. 사전 요구사항 (Prerequisites)
 
-- **Python**: 3.10 이상 (Python 3.14 권장)
+- **Python**: 3.10 이상 (Python 3.12 권장)
 - **pip & venv**: 파이썬 가상환경 도구
 - **SQLite3**: 기본 내장 가상 DB 사용
 
@@ -34,11 +34,12 @@ pip install -r requirements.txt
 
 > **주요 설치 패키지 목록**:
 > - `Django`: 백엔드 코어 웹 프레임워크
+> - `gunicorn`: WSGI 프로덕션 서버
 > - `python-dotenv`: `.env` 환경 변수 자동 로더
 > - `slack-sdk`: Slack API 커뮤니케이션
-> - `xhtml2pdf`: 피드백 결과 PDF 리포트 자동 생성
-> - `python-pptx`: 피드백 결과 PPTX 리포트 자동 생성
+> - `matplotlib` / `Pillow`: 결과지 방사형/원/막대 차트 자동 생성
 > - `openpyxl`: 팀원 및 평가 엑셀 파일 데이터 파싱
+> - `whitenoise`: 정적 및 리포트 파일 고속 서빙
 
 ---
 
@@ -125,7 +126,7 @@ python manage.py test core
 
 **정상 결과 예시**:
 ```text
-Ran 4 tests in 0.698s
+Ran 12 tests in 0.698s
 
 OK
 ```

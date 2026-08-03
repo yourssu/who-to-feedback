@@ -9,7 +9,8 @@ from core.models import (
     ReviewAuthCode, ReviewAssignment, ReviewAnswer, ReviewReport
 )
 from core.services.slack_service import SlackService
-from core.services.pdf_service import PDFReportService
+from core.services.report_service import PDFReportService
+
 
 
 @admin.register(Member)

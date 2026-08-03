@@ -219,20 +219,21 @@ class SlackService:
             return False, err
 
     def send_pdf_report_dm(self, member, pdf_file_path, cycle_title, cycle=None):
-        """피어리뷰 결과 PDF 리포트 파일 업로드 및 Slack DM 발송"""
+        """피어리뷰 결과 리포트 파일 업로드 및 Slack DM 발송"""
+        ext = os.path.splitext(pdf_file_path)[1] if pdf_file_path else ".html"
         comment_text = (
             f"🎉 **[{cycle_title}] 피어리뷰 결과 리포트 도착**\n"
             f"안녕하세요 {member.name}님!\n"
-            f"이번 피어리뷰 세션이 마감되어 동료들의 피드백 결과를 정리한 PDF 리포트 파일이 전달되었습니다.\n"
-            f"첨부된 PDF 파일을 확인해 주세요!"
+            f"이번 피어리뷰 세션이 마감되어 동료들의 피드백 결과를 정리한 결과 리포트 파일이 전달되었습니다.\n"
+            f"첨부된 리포트 파일을 확인해 주세요!"
         )
 
         if self.mock_mode:
-            print(f"\n================ [MOCK SLACK PDF REPORT DM] ================")
+            print(f"\n================ [MOCK SLACK REPORT DM] ================")
             print(f"To: {member.name} ({member.slack_user_id})\nFile Path: {pdf_file_path}")
             print(f"===========================================================\n")
-            self.log_delivery(member, 'REPORT', comment_text, True, "Mock PDF Sent", cycle)
-            return True, "Mock PDF Report DM sent"
+            self.log_delivery(member, 'REPORT', comment_text, True, "Mock Report Sent", cycle)
+            return True, "Mock Report DM sent"
 
         target_channel = self.get_or_create_dm_channel(member)
 
@@ -240,11 +241,11 @@ class SlackService:
             response = self.client.files_upload_v2(
                 channel=target_channel,
                 file=pdf_file_path,
-                title=f"{cycle_title} 피어리뷰 리포트_{member.name}.pdf",
+                title=f"{cycle_title} 피어리뷰 리포트_{member.name}{ext}",
                 initial_comment=comment_text
             )
             self.log_delivery(member, 'REPORT', comment_text, True, "", cycle)
-            return True, "PDF Report DM uploaded"
+            return True, "Report DM uploaded"
         except SlackApiError as e:
             err = e.response['error']
             self.log_delivery(member, 'REPORT', comment_text, False, err, cycle)
@@ -255,7 +256,7 @@ class SlackService:
         test_text = (
             f"🧪 **[발송 전 사전 테스트 DM]**\n"
             f"안녕하세요 관리자 {admin_member.name}님!\n"
-            f"본 메시지는 피어리뷰 전체 일괄 발송 전 양식 및 PDF 파일 정상 동작 여부를 확인하기 위한 테스트 DM입니다."
+            f"본 메시지는 피어리뷰 전체 일괄 발송 전 양식 및 결과 리포트 파일 정상 동작 여부를 확인하기 위한 테스트 DM입니다."
         )
 
         if self.mock_mode:
@@ -270,10 +271,11 @@ class SlackService:
 
         try:
             if sample_pdf_path and os.path.exists(sample_pdf_path):
+                ext = os.path.splitext(sample_pdf_path)[1] or ".html"
                 self.client.files_upload_v2(
                     channel=target_channel,
                     file=sample_pdf_path,
-                    title="[테스트] 샘플 피어리뷰 리포트.pdf",
+                    title=f"[테스트] 샘플 피어리뷰 리포트{ext}",
                     initial_comment=test_text
                 )
             else:

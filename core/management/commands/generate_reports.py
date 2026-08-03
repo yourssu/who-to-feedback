@@ -1,6 +1,6 @@
-from django.core.management.base import BaseCommand, CommandError
 from core.models import ReviewCycle
-from core.services.pdf_service import PDFReportService
+from core.services.report_service import PDFReportService
+
 
 
 class Command(BaseCommand):

@@ -20,11 +20,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Playwright Chromium 브라우저 및 필수 의존성 패키지만 핀포인트 설치 (Firefox/WebKit 미설치로 용량/시간 절감)
-RUN playwright install --with-deps chromium
-
 # 애플리케이션 소스 복사
 COPY . /app/
+
 
 # entrypoint 스크립트 실행 권한 부여
 RUN chmod +x /app/entrypoint.sh

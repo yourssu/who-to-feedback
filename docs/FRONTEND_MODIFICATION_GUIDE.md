@@ -71,7 +71,7 @@
 ---
 
 ### 5) 1클릭 개별 리포트 재생성 및 실패 재시도 - `admin_custom/reports.html`
-- **목적**: 특정 대상자(`Glen.pdf`, `Alex.pdf`) 리포트만 개별 재생성 또는 생성 실패 건 1클릭 재시도.
+- **목적**: 특정 대상자 리포트만 개별 재생성 또는 생성 실패 건 1클릭 재시도.
 - **백엔드 API**: `POST /admin-panel/reports/<report_id>/regenerate/`
 - **HTML 예시**:
   ```html
@@ -128,7 +128,7 @@
 ---
 
 ### 9) 발송 대상 체크리스트 뷰 - `admin_custom/reports.html` / `send_message.html`
-- **목적**: Slack 발송 전 이름/팀/Slack ID/PDF/승인 여부 5가지 지표 표 집계.
+- **목적**: Slack 발송 전 이름/팀/Slack ID/결과지/승인 여부 5가지 지표 표 집계.
 - **백엔드 API**: `GET /admin-panel/cycles/<cycle_id>/checklist/`
 - **HTML 예시**:
   ```html
@@ -156,7 +156,7 @@
   ```html
   <div class="card p-4 my-3">
       <h4>🎨 커스텀 HTML 결과지 템플릿 관리</h4>
-      <p class="text-muted">디자인된 HTML 양식을 업로드하면 멤버별 PDF 생성 시 적용됩니다.</p>
+      <p class="text-muted">디자인된 HTML 양식을 업로드하면 멤버별 리포트 생성 시 적용됩니다.</p>
       
       <!-- HTML 파일 업로드 폼 -->
       <form method="POST" action="{% url 'admin_upload_custom_template' cycle_id=cycle.id %}" enctype="multipart/form-data" class="d-flex gap-2 my-2">
@@ -227,6 +227,3 @@
       </form>
   </div>
   ```
-
-
-

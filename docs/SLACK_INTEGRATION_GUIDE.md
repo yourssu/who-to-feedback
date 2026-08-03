@@ -15,7 +15,7 @@
 1. 좌측 메뉴에서 **`OAuth & Permissions`**를 선택합니다.
 2. **`Scopes`** ➔ **`Bot Token Scopes`** 항목에 아래 4개 권한을 추가합니다:
    - `chat:write`: 사용자에게 PIN 코드 및 알림 메시지 DM 전송
-   - `files:write`: 피어리뷰 결과 PDF 리포트 파일 업로드 (`files.upload_v2`)
+   - `files:write`: 피어리뷰 결과 리포트 파일 업로드 (`files.upload_v2`)
    - `im:write`: 사용자 간 1:1 Direct Message 채널 생성
    - `users:read`: Slack 사용자 정보 및 Member ID 조회
 
@@ -40,13 +40,13 @@ MOCK_SLACK_MODE=False
 ```
 
 - `MOCK_SLACK_MODE=True`: 실제 Slack DM을 보내지 않고 서버 콘솔/로그에 PIN 코드 및 메시지를 출력합니다.
-- `MOCK_SLACK_MODE=False`: 실제 Slack API를 호출하여 사용자에게 DM 메시지와 PDF 파일이 전송됩니다.
+- `MOCK_SLACK_MODE=False`: 실제 Slack API를 호출하여 사용자에게 DM 메시지와 결과 리포트 파일이 전송됩니다.
 
 ---
 
 ## 3. 사용자 Slack Member ID 등록
 
-사용자에게 DM 및 PDF를 전달하기 위해 Slack Member ID(`U12345678` 형태)가 필요합니다.
+사용자에게 DM 및 결과지를 전달하기 위해 Slack Member ID(`U12345678` 형태)가 필요합니다.
 
 1. Slack 앱에서 팀원의 프로필을 클릭합니다.
 2. 프로필 팝업의 **`더보기 (...)`** ➔ **`멤버 ID 복사`**를 선택합니다.

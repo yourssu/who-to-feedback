@@ -14,11 +14,10 @@ from core.models import (
     DataValidationLog, SlackDeliveryLog, ReviewCycleVersionLog
 )
 from core.services.slack_service import SlackService
-from core.services.pdf_service import PDFReportService
-from core.services.ppt_service import PPTReportService
 from core.services.validation_service import DataValidationService
 from core.services.layout_service import LayoutCheckService
-from core.services.report_service import ReportManagementService
+from core.services.report_service import PDFReportService, PPTReportService, ReportManagementService
+
 
 
 class PeerReviewSystemTestCase(TestCase):

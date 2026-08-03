@@ -18,22 +18,19 @@ graph TD
     
     AdminViews --> ValService[DataValidationService (사전검증/정규화)]
     AdminViews --> LayoutService[LayoutCheckService (자동 레이아웃 검수)]
-    AdminViews --> PDFService[PDFReportService (xhtml2pdf 엔진)]
-    AdminViews --> PPTService[PPTReportService (python-pptx 엔진)]
-    AdminViews --> ReportService[ReportManagementService (샘플/체크리스트)]
+    AdminViews --> ReportServices[ReportService / PDFReportService / PPTReportService (HTML 리포트 엔진)]
     AdminViews --> SlackService[SlackService (PIN/독촉/리포트 DM)]
     
     ValService --> ORM[(SQLite / Django ORM DB)]
     LayoutService --> ORM
-    PDFService --> MediaStore[(Media Storage /reports_pdf/)]
-    PPTService --> MediaStore[(Media Storage /reports_ppt/)]
+    ReportServices --> MediaStore[(Media Storage /reports_pdf/)]
 ```
 
 ---
 
 ## 2. 데이터베이스 ORM 스키마 명세 (`core/models.py`)
 
-시스템은 총 **9개의 데이터 모델**로 구성되어 있습니다.
+시스템은 총 **10개의 데이터 모델**로 구성되어 있습니다.
 
 ### 1) `Member` (팀원 정보 및 권한)
 - `name`: 성명 (CharField, max_length=50)
@@ -98,8 +95,8 @@ graph TD
 ### 9) `ReviewReport` (피드백 결과 리포트)
 - `cycle`: FK `ReviewCycle`
 - `reviewee`: FK `Member`
-- `pdf_file`: PDF 파일 경로 (FileField, upload_to='reports_pdf/')
-- `ppt_file`: PPT 파일 경로 (FileField, upload_to='reports_ppt/')
+- `pdf_file`: 결과지 리포트 파일 경로 (FileField, upload_to='reports_pdf/')
+- `ppt_file`: PPT 연동 리포트 파일 경로 (FileField, upload_to='reports_ppt/')
 - `version`: 리포트 버전 (CharField)
 - `validation_status`: 5단계 검수 상태 (`GENERATED` | `NEEDS_REVIEW` | `APPROVED` | `SENT` | `FAILED`)
 - `admin_memo`: 관리자 수정 메모/코멘트 (TextField)
@@ -128,15 +125,13 @@ graph TD
 ### 2) `LayoutCheckService` ([layout_service.py](file:///Users/yoon/who-to-feedback/core/services/layout_service.py))
 - **`check_layout_overflow(cycle, reviewee)`**: 300자/500자 이상 긴 글 overflow 및 키워드 태그 8개 이상 넘침 현상을 자동 검사하여 `layout_check_passed` 및 이슈 사유 저장.
 
-### 3) `ReportManagementService` ([report_service.py](file:///Users/yoon/who-to-feedback/core/services/report_service.py))
+### 3) `PDFReportService`, `PPTReportService`, `ReportManagementService` ([report_service.py](file:///Users/yoon/who-to-feedback/core/services/report_service.py))
+- **통합 서비스 모듈**: 리포트 데이터 바인딩, HTML 렌더링, 파일 저장, 샘플 리포트 생성 및 체크리스트집계를 단일 서비스 모듈로 통합.
+- **`generate_pdf_report(cycle, reviewee)`**: 템플릿 렌더링 결과물을 HTML 정적 리포트 파일로 즉시 저장하여 안정적인 웹 서빙 지원.
 - **`generate_sample_reports(cycle, sample_count=3)`**: 실데이터 발송 전 대표 샘플 2~3명만 리포트를 미리 생성해 템플릿 테스트 모드 구동.
-- **`get_delivery_checklist(cycle)`**: Slack 발송 전 이름 / 팀 / Slack ID / PDF 존재 여부 / 승인 여부 5가지 지표 표 집계.
+- **`get_delivery_checklist(cycle)`**: Slack 발송 전 이름 / 팀 / Slack ID / 리포트 존재 여부 / 승인 여부 5가지 지표 표 집계.
 
-### 4) `PDFReportService` & `PPTReportService` ([pdf_service.py](file:///Users/yoon/who-to-feedback/core/services/pdf_service.py), [ppt_service.py](file:///Users/yoon/who-to-feedback/core/services/ppt_service.py))
-- **익명성 보장 규칙**: Reviewee 리포트 생성 및 요약 데이터에서 Reviewer 작성자의 개인식별 정보를 완전 배제하고 무작위 렌더링.
-- **예외 로그 보존 & 1클릭 재시도**: 리포트 생성 실패 시 `error_log`에 예외를 수집하고 `admin_regenerate_report` 뷰로 1클릭 재시도 처리.
-
-### 5) `SlackService` ([slack_service.py](file:///Users/yoon/who-to-feedback/core/services/slack_service.py))
+### 4) `SlackService` ([slack_service.py](file:///Users/yoon/who-to-feedback/core/services/slack_service.py))
 - `send_auth_code_dm`, `send_reminder_dm`, `send_pdf_report_dm`, `send_test_dm`, `send_failed_reminders_retry` 메서드를 포함하며, 모든 DM 발송 결과를 `SlackDeliveryLog`에 전수 저장.
 
 ---

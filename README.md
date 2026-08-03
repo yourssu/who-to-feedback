@@ -1,6 +1,6 @@
 # Who To Feedback (피어리뷰 자동화 시스템)
 
-Django 기반의 웹 피어리뷰 시스템으로, Slack DM을 활용한 PIN 코드 인증, 피어리뷰 작성, 미작성자 알림, HTML/PDF 리포트 생성 및 관리자 검토/배포 기능을 제공합니다.
+Django 기반의 웹 피어리뷰 시스템으로, Slack DM을 활용한 PIN 코드 인증, 피어리뷰 작성, 미작성자 알림, HTML 결과 리포트 생성 및 관리자 검토/배포 기능을 제공합니다.
 
 ---
 
@@ -14,17 +14,17 @@ Django 기반의 웹 피어리뷰 시스템으로, Slack DM을 활용한 PIN 코
    - 문항 및 객관식 선택지 제작 (`/admin-panel/cycles/<id>/questions/`)
    - 부서별 필터링 기반 리뷰어-리뷰이 매칭 (진행 중 매칭 변경 가능)
    - 회차별 제출 진행률 확인 및 알림 트리거 (`/admin-panel/cycles/<id>/status/`)
-   - HTML/PDF 리포트 미리보기 및 Slack DM 배포 (`/admin-panel/cycles/<id>/reports/`)
+   - HTML 리포트 미리보기 및 Slack DM 배포 (`/admin-panel/cycles/<id>/reports/`)
    - 커스텀 Slack DM 메시지 발송 (`/admin-panel/messages/send/`)
-5. **PDF 생성 및 관리자 검토**: 전원 제출 완료 시 PDF 리포트가 생성되며, 관리자가 검토 대시보드에서 확인 후 배포를 승인합니다.
+5. **HTML 리포트 생성 및 관리자 검토**: 전원 제출 완료 시 결과 HTML 리포트가 생성되며, 관리자가 검토 대시보드에서 확인 후 배포를 승인합니다.
 
 ---
 
 ## 기술 스택
 
-- **Backend**: Python 3.11+, Django 5.x
-- **Database**: SQLite (개발용) / Django ORM
-- **PDF Engine**: xhtml2pdf
+- **Backend**: Python 3.12, Django 5.x / Gunicorn
+- **Database**: SQLite / Django ORM
+- **Report Engine**: Django Template HTML Engine (WhiteNoise Static Serving)
 - **Integration**: Slack SDK (WebClient API)
 
 ---
@@ -59,5 +59,6 @@ python manage.py test core
 
 ## 기술 문서
 
-- **기술 명세서**: [docs/TECHNICAL_SPECIFICATION.md](docs/TECHNICAL_SPECIFICATION.md)
-- **Slack 연동 가이드**: [docs/SLACK_INTEGRATION_GUIDE.md](docs/SLACK_INTEGRATION_GUIDE.md)
+- **통합 배포 가이드**: [docs/DEPLOYMENT.md](DEPLOYMENT.md)
+- **기술 명세서**: [docs/TECHNICAL_SPECIFICATION.md](TECHNICAL_SPECIFICATION.md)
+- **Slack 연동 가이드**: [docs/SLACK_INTEGRATION_GUIDE.md](SLACK_INTEGRATION_GUIDE.md)

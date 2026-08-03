@@ -1,6 +1,6 @@
 # PeerFlow (who-to-feedback) Docker + Host Nginx + Cloudflare 배포 가이드
 
-본 문서는 **Cloudflare DNS/Edge Proxy → Host Nginx → Docker Container (Gunicorn/Django)** 3단 아키텍처 환경에서 피어리뷰 웹 서비스를 안정적으로 운영하고 배포하기 위한 통합 지침서입니다.
+본 문서는 **Cloudflare DNS/Edge Proxy → Host Nginx → Docker Container (Gunicorn/WhiteNoise/Django)** 3단 아키텍처 환경에서 피어리뷰 웹 서비스를 안정적으로 운영하고 배포하기 위한 통합 지침서입니다.
 
 ---
 
@@ -14,14 +14,16 @@
         │
         ▼ (HTTP 80 / HTTPS 443)
 [ Host Nginx (Reverse Proxy) ]
-        ├── /static/  ➔ Host ./staticfiles/ (Direct Serve)
         ├── /media/   ➔ Host ./media/ (Direct Serve)
+        ├── /static/  ➔ Gunicorn Container (WhiteNoise Serve)
+        └── /         ➔ Gunicorn Container
         │
         ▼ (HTTP 127.0.0.1:8000)
 [ Docker Container : peerflow_web ]
    ├── Gunicorn (--workers 2 --threads 4)
-   ├── Django App (SQLite: ./data/db.sqlite3)
-   └── Playwright Chromium (PDF 엔진)
+   ├── Django App (WhiteNoise Compressed Static Engine)
+   ├── SQLite DB (./data/db.sqlite3)
+   └── HTML 정적 리포트 서빙 엔진
 ```
 
 ---
@@ -60,13 +62,12 @@ SITE_URL=https://yourdomain.com
 
 ---
 
-## 🐳 4. Docker 컨테이너 실행 및 볼륨 데이터 영속성
+## 🐳 4. Docker 컨테이너 실행 및 데이터 영속성
 
-### 4.1 볼륨 바인드 마운트 (Data & Static Persistence)
-`docker-compose.yml`은 호스트 디렉토리와 컨테이너 내부를 1:1 바인드 마운트합니다.
+### 4.1 영속 볼륨 (Data & Media Persistence)
+정적 파일(`staticfiles`)은 Django의 **WhiteNoise** 미들웨어가 컨테이너 내부에서 직접 gzip 압축/캐싱하여 서빙하므로 별도의 호스트 마운트가 필요하지 않습니다. 호스트와 공유해야 하는 데이터만 마운트합니다:
 * **SQLite DB**: `./data` ➔ `/app/data` (`./data/db.sqlite3`)
-* **미디어 파일**: `./media` ➔ `/app/media` (첨부 이미지, 생성된 PDF 등)
-* **정적 파일**: `./staticfiles` ➔ `/app/staticfiles` (`entrypoint.sh`에서 `collectstatic` 수행 시 호스트 디렉토리로 즉시 공유됨)
+* **미디어 파일**: `./media` ➔ `/app/media` (질문 이미지, HTML 결과지 리포트)
 
 ### 4.2 컨테이너 구동 명령어
 ```bash
@@ -144,14 +145,19 @@ server {
     set_real_ip_from 162.158.0.0/15;
     real_ip_header CF-Connecting-IP;
 
-    # 1. 정적 파일 (Static Files) 호스트 다이렉트 서빙 (끝에 / 필수!)
+    # 1. 정적 파일 (Static Files - WhiteNoise 서빙 컨테이너 프록시)
     location /static/ {
-        alias /path/to/who-to-feedback/staticfiles/;
+        proxy_pass http://127.0.0.1:8000/static/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
         expires 30d;
         add_header Cache-Control "public, no-transform";
     }
 
-    # 2. 미디어 파일 (Media Files - 질문 이미지, PDF 리포트 등)
+    # 2. 미디어 파일 (Media Files - 질문 이미지, HTML 결과지 리포트 등)
     location /media/ {
         alias /path/to/who-to-feedback/media/;
         expires 7d;
@@ -166,7 +172,7 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto https;
 
-        # 타임아웃 확장 (대용량 PDF 생성 고려)
+        # 타임아웃 확장 (안정적 요청 처리 고려)
         proxy_connect_timeout 120s;
         proxy_read_timeout 300s;
         proxy_send_timeout 300s;
@@ -177,7 +183,6 @@ server {
 ### Nginx 설정 적용 및 재시작
 ```bash
 sudo ln -sf /etc/nginx/sites-available/peerflow /etc/nginx/sites-enabled/
-sudo chmod -R 755 /path/to/who-to-feedback/staticfiles
 sudo nginx -t
 sudo systemctl reload nginx
 ```
