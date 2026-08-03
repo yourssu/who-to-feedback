@@ -14,7 +14,7 @@ def health_check(request):
 def admin_root_view(request):
     if request.user.is_authenticated and request.user.is_superuser:
         return redirect('admin_dashboard')
-    return admin.site.index(request)
+    return redirect('/admin/login/?next=/admin-panel/')
 
 urlpatterns = [
     path('health/', health_check, name='health_check'),

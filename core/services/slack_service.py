@@ -155,7 +155,8 @@ class SlackService:
     def send_reminder_dm(self, reviewer, unsubmitted_reviewees, cycle=None):
         """미작성 동료 명단이 명시된 독촉 Slack DM 전송"""
         reviewee_names = ", ".join([r.name for r in unsubmitted_reviewees])
-        login_url = "http://127.0.0.1:8000/login"
+        site_url = getattr(settings, 'SITE_URL', 'http://127.0.0.1:8000').rstrip('/')
+        login_url = f"{site_url}/login"
 
         message_text = (
             f"⏰ **[피어리뷰 작성 마감 임박 알림]**\n"

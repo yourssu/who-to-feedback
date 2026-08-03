@@ -29,7 +29,6 @@ except ImportError:
 from django.conf import settings
 from django.template import Template, Context
 from django.template.loader import render_to_string
-from xhtml2pdf import pisa
 from core.models import Member, ReviewReport, ReviewAnswer, ReviewAssignment, ReviewQuestion
 
 
@@ -206,7 +205,8 @@ class PDFReportService:
         assignments = ReviewAssignment.objects.filter(cycle=cycle, reviewee=reviewee, is_submitted=True)
         questions = cycle.questions.all().order_by('order')
 
-        font_path = os.path.join(settings.BASE_DIR, 'core', 'static', 'fonts', 'Pretendard-Regular.ttf')
+        font_path_raw = os.path.join(settings.BASE_DIR, 'core', 'static', 'fonts', 'Pretendard-Regular.ttf')
+        font_path = f"file://{font_path_raw}" if not font_path_raw.startswith('file://') else font_path_raw
         total_feedback_cnt = assignments.count()
 
         context = {
@@ -227,7 +227,8 @@ class PDFReportService:
             answers = ReviewAnswer.objects.filter(assignment__in=assignments, question=q, is_excluded_from_report=False)
             keys = [f'q_{idx}_', f'q_{q.order}_']
 
-            q_image_url = q.image.url if q.image else ""
+            q_image_file_uri = f"file://{q.image.path}" if q.image and os.path.exists(q.image.path) else ""
+            q_image_url = q_image_file_uri or (q.image.url if q.image else "")
             q_image_path = q.image.path if q.image and os.path.exists(q.image.path) else ""
 
             for k in set(keys):
@@ -393,55 +394,49 @@ class PDFReportService:
             full_path = os.path.join(output_dir, filename)
 
             # Playwright + Pillow 기반 100% 픽셀 일치 PNG 캡처 (6K UHD 6144x3456 초고해상도) ➔ 16:9 와이드 PDF 병합 파이프라인
-            pdf_generated_by_playwright = False
-            try:
-                from playwright.sync_api import sync_playwright
-                from PIL import Image
+            from playwright.sync_api import sync_playwright
+            from PIL import Image
 
-                with sync_playwright() as p:
-                    browser = p.chromium.launch(
-                        headless=True,
-                        args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+            with sync_playwright() as p:
+                browser = p.chromium.launch(
+                    headless=True,
+                    args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+                )
+                try:
+                    page = browser.new_page(
+                        viewport={"width": 6144, "height": 3456},
+                        device_scale_factor=2
                     )
-                    try:
-                        page = browser.new_page(
-                            viewport={"width": 6144, "height": 3456},
-                            device_scale_factor=2
-                        )
-                        page.set_content(html_content, wait_until="networkidle")
+                    page.set_content(html_content, wait_until="domcontentloaded", timeout=15000)
 
-                        slide_elements = page.query_selector_all('.slide')
-                        png_images = []
+                    slide_elements = page.query_selector_all('.slide')
+                    png_images = []
 
-                        if slide_elements:
-                            for idx, slide_el in enumerate(slide_elements):
-                                png_bytes = slide_el.screenshot(type="png")
-                                img = Image.open(io.BytesIO(png_bytes)).convert('RGB')
-                                png_images.append(img)
-                        else:
-                            png_bytes = page.screenshot(type="png", full_page=True)
+                    if slide_elements:
+                        for idx, slide_el in enumerate(slide_elements):
+                            png_bytes = slide_el.screenshot(type="png")
                             img = Image.open(io.BytesIO(png_bytes)).convert('RGB')
                             png_images.append(img)
-                    finally:
-                        browser.close()
+                    else:
+                        png_bytes = page.screenshot(type="png", full_page=True)
+                        img = Image.open(io.BytesIO(png_bytes)).convert('RGB')
+                        png_images.append(img)
+                finally:
+                    browser.close()
 
-                    if png_images:
-                        png_images[0].save(full_path, save_all=True, append_images=png_images[1:], resolution=600.0)
-                        pdf_generated_by_playwright = True
-            except Exception as pw_err:
-                pdf_generated_by_playwright = False
-            finally:
-                gc.collect()
+                if png_images:
+                    png_images[0].save(full_path, save_all=True, append_images=png_images[1:], resolution=600.0)
+                else:
+                    raise RuntimeError("Playwright에서 캡처된 슬라이드 이미지가 없습니다.")
 
-            if not pdf_generated_by_playwright:
-                with open(full_path, 'wb') as pdf_file:
-                    pisa.CreatePDF(html_content, dest=pdf_file)
+            gc.collect()
 
             report.pdf_file.name = f"reports_pdf/{filename}"
             report.validation_status = 'APPROVED'
             report.error_log = ""
             report.save()
             return report
+
         except Exception as e:
             report.validation_status = 'FAILED'
             report.error_log = str(e)
