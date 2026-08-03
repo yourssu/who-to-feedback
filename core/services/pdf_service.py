@@ -6,6 +6,8 @@ import random
 import gc
 
 try:
+    import logging
+    logging.getLogger('matplotlib.font_manager').disabled = True
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
@@ -24,6 +26,7 @@ try:
     HAS_MATPLOTLIB = True
 except ImportError:
     HAS_MATPLOTLIB = False
+
 
 
 from django.conf import settings
@@ -404,8 +407,8 @@ class PDFReportService:
                 )
                 try:
                     page = browser.new_page(
-                        viewport={"width": 6144, "height": 3456},
-                        device_scale_factor=2
+                        viewport={"width": 3840, "height": 2160},
+                        device_scale_factor=1
                     )
                     page.set_content(html_content, wait_until="domcontentloaded", timeout=15000)
 
