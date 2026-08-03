@@ -12,13 +12,11 @@ services:
     volumes:
       - ./data:/app/data
       - ./media:/app/media
-      - staticfiles_data:/app/staticfiles
+      - ./staticfiles:/app/staticfiles
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
       interval: 30s
       timeout: 10s
       retries: 3
 
-volumes:
-  staticfiles_data:
 
