@@ -30,12 +30,13 @@
       </nav>
       <div class="side-bottom">
         <div class="user-chip"><strong>PeerFlow 관리자</strong><span>{{ request.user.username }}</span></div>
-        <div class="side-actions"><button class="icon-btn" type="button" data-theme-toggle aria-label="다크 모드로 전환" aria-pressed="false">◐</button><a class="icon-btn" href="{% url 'review_dashboard' %}" aria-label="리뷰어 화면으로 이동">↗</a></div>
+        <div class="side-actions"><button class="icon-btn" type="button" data-theme-toggle aria-label="다크 모드로 전환" aria-pressed="false">◐</button><a class="icon-btn" href="{% url 'review_dashboard' %}" aria-label="리뷰어 화면으로 이동" title="리뷰어 화면">↗</a><a class="icon-btn" href="{% url 'logout' %}" aria-label="로그아웃" title="로그아웃">⎋</a></div>
       </div>
     </aside>
     <header class="mobile-bar">
       <a class="mobile-brand" href="{% url 'admin_dashboard' %}">PeerFlow <small>Admin</small></a>
-      <div class="mobile-actions"><button class="icon-btn" type="button" data-theme-toggle aria-label="다크 모드로 전환" aria-pressed="false">◐</button><a class="icon-btn" href="{% url 'review_dashboard' %}" aria-label="리뷰어 화면으로 이동">↗</a></div>
+      <div class="mobile-actions"><button class="icon-btn" type="button" data-theme-toggle aria-label="다크 모드로 전환" aria-pressed="false">◐</button><a class="icon-btn" href="{% url 'review_dashboard' %}" aria-label="리뷰어 화면으로 이동" title="리뷰어 화면">↗</a><a class="icon-btn" href="{% url 'logout' %}" aria-label="로그아웃" title="로그아웃">⎋</a></div>
+
     </header>
     <main class="page">
       <div class="page-inner">

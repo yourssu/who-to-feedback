@@ -1,5 +1,7 @@
 from django.shortcuts import render, redirect
 from django.contrib import messages
+from django.contrib.auth import logout as django_logout
+from django.conf import settings
 from core.models import ReviewAuthCode
 
 
@@ -35,7 +37,15 @@ def login_view(request):
 
 
 def logout_view(request):
-    """세션 로그아웃"""
+    """세션 파기, Django 인증 해제 및 브라우저 쿠키 강제 삭제 (DB draft_data는 보존)"""
+    django_logout(request)
     request.session.flush()
+
+    response = redirect('login')
+    session_cookie_name = getattr(settings, 'SESSION_COOKIE_NAME', 'sessionid')
+    response.delete_cookie(session_cookie_name, path='/')
+    response.delete_cookie('csrftoken', path='/')
+
     messages.info(request, "성공적으로 로그아웃되었습니다.")
-    return redirect('login')
+    return response
+

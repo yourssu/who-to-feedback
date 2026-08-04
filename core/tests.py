@@ -126,6 +126,37 @@ class PeerReviewSystemTestCase(TestCase):
         res_hist = self.client.get(reverse('admin_cycle_history', kwargs={'cycle_id': self.cycle.id}))
         self.assertEqual(res_hist.status_code, 200)
 
+    def test_05_logout_cookie_deletion_and_draft_preservation(self):
+        """로그아웃 시 세션/쿠키 삭제 및 DB draft_data 보존 테스트"""
+        session = self.client.session
+        session['member_id'] = self.alice.id
+        session['member_name'] = self.alice.name
+        session['cycle_id'] = self.cycle.id
+        session.save()
+
+        self.a_to_b.draft_data = {f'q_{self.q2.id}_text': '로그아웃 테스트 임시 내용'}
+        self.a_to_b.save()
+
+        res_logout = self.client.get(reverse('logout'))
+        self.assertEqual(res_logout.status_code, 302)
+
+        self.assertNotIn('member_id', self.client.session)
+        self.assertEqual(res_logout.cookies['sessionid'].value, '')
+
+        self.a_to_b.refresh_from_db()
+        self.assertEqual(self.a_to_b.draft_data.get(f'q_{self.q2.id}_text'), '로그아웃 테스트 임시 내용')
+
+        session = self.client.session
+        session['member_id'] = self.alice.id
+        session.save()
+        self.client.cookies['sessionid'] = session.session_key
+        res_form = self.client.get(reverse('review_form', kwargs={'assignment_id': self.a_to_b.id}))
+        self.assertEqual(res_form.status_code, 200)
+        self.assertContains(res_form, '로그아웃 테스트 임시 내용')
+
+
+
+
 
 class CustomHTMLTemplateTestCase(TestCase):
     def setUp(self):
