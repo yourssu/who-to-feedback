@@ -3,7 +3,6 @@
 {% block admin_content %}
 <header class="page-head">
   <div><span class="eyebrow">DATA QUALITY</span><h1 class="page-title">데이터 검증</h1><p class="page-description">업로드 데이터의 필수값을 확인하고 유사한 이름을 안전하게 정리합니다.</p></div>
-  {% if cycle %}<div class="head-actions"><button type="button" class="btn btn-primary" data-modal-open="uploadModal">엑셀 파일 업로드</button></div>{% endif %}
 </header>
 
 {% if cycle %}
@@ -20,10 +19,6 @@
     <div class="section-head"><div><h2 class="card-title">이름 정규화 제안</h2><p class="card-subtitle">병합 전 원본 이름과 제안 이름을 확인하세요.</p></div></div>
     <div class="normalization-list">{% for sug in suggestions %}<article class="normalization-item"><div><strong>{{ sug.raw_names|join:', ' }}</strong><span>유사도 {{ sug.similarity }}% · 제안 이름 {{ sug.suggested_name }}</span></div><form method="post" action="{% url 'admin_apply_normalization' %}">{% csrf_token %}<input type="hidden" name="cycle_id" value="{{ cycle.id }}">{% for r in sug.raw_names %}<input type="hidden" name="raw_names" value="{{ r }}">{% endfor %}<input type="hidden" name="target_name" value="{{ sug.suggested_name }}"><button type="submit" class="btn btn-tonal btn-small">{{ sug.suggested_name }}(으)로 병합</button></form></article>{% empty %}<div class="empty-state compact-empty">유사도가 높은 미정규화 이름 그룹이 없습니다.</div>{% endfor %}</div>
   </section>
-</div>
-
-<div id="uploadModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="uploadTitle" aria-hidden="true">
-  <div class="modal-content"><div class="modal-head"><div><span class="eyebrow">IMPORT</span><h2 class="modal-title" id="uploadTitle">팀원·매칭 파일 업로드</h2></div><button type="button" class="modal-close" data-modal-close aria-label="닫기">×</button></div><p class="card-subtitle modal-description">엑셀 파일을 업로드하면 저장 전 필수값과 이름 중복을 검사합니다.</p><form method="post" action="{% url 'admin_upload_excel' cycle_id=cycle.id %}" enctype="multipart/form-data">{% csrf_token %}<div class="form-group"><label class="form-label" for="excel-file">엑셀 파일</label><input id="excel-file" type="file" name="excel_file" accept=".xlsx,.xls" class="form-control" required><span class="assistive">.xlsx 또는 .xls 형식을 지원합니다.</span></div><div class="modal-actions"><button type="button" data-modal-close class="btn">취소</button><button type="submit" class="btn btn-primary">업로드하고 검증</button></div></form></div>
 </div>
 {% else %}
 <section class="card empty-state"><h2 class="card-title">검증할 회차가 없습니다</h2><p class="card-subtitle">회차를 만든 뒤 팀원·매칭 데이터를 업로드해 주세요.</p><a class="btn btn-primary empty-action" href="{% url 'admin_dashboard' %}">Overview로 이동</a></section>

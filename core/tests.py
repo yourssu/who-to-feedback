@@ -346,6 +346,50 @@ class SetupWizardTestCase(TestCase):
         self.assertEqual(res_locked.status_code, 404)
 
 
+class AdminSidebarTestCase(TestCase):
+    def test_sidebar_links_always_active(self):
+        """회차가 존재할 때 Overview 및 팀원 관리 탭에서도 질문지/매칭/리포트 사이드바 링크 활성화 테스트"""
+        superuser = User.objects.create_superuser('admin', 'admin@test.com', 'password123')
+        cycle = ReviewCycle.objects.create(title="테스트 회차", status="ACTIVE")
+        self.client.force_login(superuser)
+
+        # Overview 접근 시 사이드바 질문지/매칭/리포트 링크 활성화 확인
+        res_overview = self.client.get(reverse('admin_dashboard'))
+        self.assertEqual(res_overview.status_code, 200)
+        self.assertContains(res_overview, reverse('admin_questions', kwargs={'cycle_id': cycle.id}))
+        self.assertContains(res_overview, reverse('admin_assignments', kwargs={'cycle_id': cycle.id}))
+        self.assertContains(res_overview, reverse('admin_reports', kwargs={'cycle_id': cycle.id}))
+
+        # 팀원 관리 접근 시 사이드바 질문지/매칭/리포트 링크 활성화 확인
+        res_members = self.client.get(reverse('admin_members'))
+        self.assertEqual(res_members.status_code, 200)
+        self.assertContains(res_members, reverse('admin_questions', kwargs={'cycle_id': cycle.id}))
+        self.assertContains(res_members, reverse('admin_assignments', kwargs={'cycle_id': cycle.id}))
+        self.assertContains(res_members, reverse('admin_reports', kwargs={'cycle_id': cycle.id}))
+
+    def test_validation_view_with_completed_and_draft_cycles(self):
+        """완료된 회차와 DRAFT 상태의 회차가 동시에 존재할 때 데이터 검증 뷰 렌더링 테스트"""
+        superuser = User.objects.create_superuser('admin', 'admin2@test.com', 'password123')
+        self.client.force_login(superuser)
+
+        cycle_completed = ReviewCycle.objects.create(title="완료된 회차", status="COMPLETED")
+        cycle_draft = ReviewCycle.objects.create(title="초안 회차", status="DRAFT")
+
+        # 1. /admin-panel/validation/ GET (URL 파라미터 없음)
+        res_val1 = self.client.get(reverse('admin_validation'))
+        self.assertEqual(res_val1.status_code, 200)
+
+        # 2. /admin-panel/cycles/<draft_id>/validation/ GET
+        res_val2 = self.client.get(reverse('admin_validation_detail', kwargs={'cycle_id': cycle_draft.id}))
+        self.assertEqual(res_val2.status_code, 200)
+
+        # 3. /admin-panel/cycles/<completed_id>/validation/ GET
+        res_val3 = self.client.get(reverse('admin_validation_detail', kwargs={'cycle_id': cycle_completed.id}))
+        self.assertEqual(res_val3.status_code, 200)
+
+
+
+
 
 
 
