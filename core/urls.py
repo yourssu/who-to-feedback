@@ -28,7 +28,6 @@ urlpatterns = [
     # PAGE 2: 데이터 검증 (a-validation)
     path('admin-panel/validation/', admin_views.admin_validation, name='admin_validation'),
     path('admin-panel/cycles/<int:cycle_id>/validation/', admin_views.admin_validation, name='admin_validation_detail'),
-    path('admin-panel/cycles/<int:cycle_id>/validation/upload/', admin_views.admin_upload_excel, name='admin_upload_excel'),
     path('admin-panel/validation/normalize/', admin_views.admin_apply_normalization, name='admin_apply_normalization'),
 
     # PAGE 3: 질문지 제작 (ACTIVE 시작 후 잠금)

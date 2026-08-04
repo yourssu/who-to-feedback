@@ -14,6 +14,14 @@ document.documentElement.classList.add('js');
     if(opener){var modal=document.getElementById(opener.dataset.modalOpen);if(modal){modal.classList.add('open');modal.setAttribute('aria-hidden','false');document.body.classList.add('modal-open');var first=modal.querySelector('input,select,textarea,button');if(first)setTimeout(function(){first.focus()},0)}return}
     var closer=e.target.closest('[data-modal-close]');
     if(closer){closeModal(closer.closest('.modal'));return}
+    var reportItem=e.target.closest('[data-report-select]');
+    if(reportItem && !e.target.closest('a,button,form')){
+      var id=reportItem.dataset.reportSelect;
+      document.querySelectorAll('[data-report-select]').forEach(function(el){el.classList.toggle('selected',el===reportItem)});
+      document.querySelectorAll('[data-preview-id]').forEach(function(el){el.style.display=(String(el.dataset.previewId)===String(id))?'block':'none'});
+      document.querySelectorAll('[data-management-id]').forEach(function(el){el.style.display=(String(el.dataset.managementId)===String(id))?'block':'none'});
+      return;
+    }
     if(e.target.classList.contains('modal'))closeModal(e.target);
   });
   document.addEventListener('keydown',function(e){if(e.key==='Escape')document.querySelectorAll('.modal.open').forEach(closeModal)});

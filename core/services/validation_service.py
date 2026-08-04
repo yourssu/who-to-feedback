@@ -5,52 +5,6 @@ from core.models import Member, ReviewAssignment, ReviewAnswer, DataValidationLo
 
 
 class DataValidationService:
-    @staticmethod
-    def validate_excel_data(file_obj, cycle):
-        """엑셀 파일 업로드 직후 6가지 오류(이름 누락, 중복 이름, 대소문자 불일치, 팀/역할 누락, 점수 누락, 서술형 빈값) 자동 감지"""
-        wb = openpyxl.load_workbook(file_obj)
-        sheet = wb.active
-
-        DataValidationLog.objects.filter(cycle=cycle).delete()
-        logs = []
-        seen_names = {}
-
-        for row_idx, row in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=2):
-            if not row or not any(row):
-                continue
-
-            name = str(row[0]).strip() if len(row) > 0 and row[0] else None
-            email = str(row[1]).strip() if len(row) > 1 and row[1] else None
-            dept = str(row[2]).strip() if len(row) > 2 and row[2] else None
-            role = str(row[3]).strip() if len(row) > 3 and row[3] else None
-
-            # 1. 이름 누락 검사
-            if not name:
-                logs.append(DataValidationLog(
-                    cycle=cycle, row_index=row_idx, issue_type='NAME_MISSING', current_value='(이름 빈값)'
-                ))
-            else:
-                # 2. 중복 이름 및 대소문자 불일치 검사 (예: Alex, alex, ALEX)
-                lower_name = name.lower()
-                if lower_name in seen_names:
-                    logs.append(DataValidationLog(
-                        cycle=cycle, row_index=row_idx, issue_type='DUPLICATE_OR_CASE_MISMATCH',
-                        current_value=f"'{name}' - 이전 {seen_names[lower_name]}행 '{seen_names[lower_name + '_raw']}'과 대소문자 불일치/중복"
-                    ))
-                else:
-                    seen_names[lower_name] = row_idx
-                    seen_names[lower_name + '_raw'] = name
-
-            # 3. 팀 / 역할 누락 검사
-            if not dept or not role:
-                logs.append(DataValidationLog(
-                    cycle=cycle, row_index=row_idx, issue_type='DEPT_ROLE_MISSING',
-                    current_value=f"{name or '미상'} · (팀: {dept or '빈값'}, 역할: {role or '빈값'})"
-                ))
-
-        if logs:
-            DataValidationLog.objects.bulk_create(logs)
-        return logs
 
     @staticmethod
     def get_normalization_suggestions(cycle):
@@ -143,11 +97,18 @@ class DataValidationService:
             if not row or not any(row.values()):
                 continue
 
-            name = get_col(row, 'name', '이름', '닉네임', 'username')
+            name = get_col(row, '닉네임', '닉네임(발음)', 'nickname', '이름', 'name')
             email = get_col(row, 'email', '이메일')
-            slack_id = get_col(row, 'slack_user_id', 'slack_id', '슬랙id', 'slack')
-            dept = get_col(row, 'department', 'dept', '소속부서', '부서', '팀')
-            role_raw = get_col(row, 'role', '역할', '권한').upper()
+            slack_id = get_col(row, 'slack_user_id', 'slack_id', 'slack')
+            role_raw = get_col(row, '권한', 'permission')
+            dept = get_col(row, '부서', '팀', 'team', 'department')
+
+            # '역할' 헤더가 ADMIN/MEMBER 등 권한 값을 담고 있는 경우 role_raw로 우선 사용
+            role_candidate = get_col(row, '역할', 'role')
+            if role_candidate in ['ADMIN', 'MEMBER', '관리자', 'SUPERUSER']:
+                role_raw = role_candidate
+            elif not dept and role_candidate:
+                dept = role_candidate
 
             # 이메일이 없을 때 가상 이메일 생성
             if not email:

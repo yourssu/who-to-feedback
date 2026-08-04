@@ -202,16 +202,6 @@ def admin_validation(request, cycle_id=None):
 
 
 @superuser_required
-def admin_upload_excel(request, cycle_id):
-    if request.method == 'POST' and request.FILES.get('excel_file'):
-        cycle = get_object_or_404(ReviewCycle, id=cycle_id)
-        excel_file = request.FILES['excel_file']
-        logs = DataValidationService.validate_excel_data(excel_file, cycle)
-        messages.success(request, f"엑셀 사전 검증 완료! 총 {len(logs)}건의 입력 이슈(이름 누락, 중복/대소문자 불일치, 팀/역할 누락)가 감지되었습니다.")
-    return redirect('admin_validation')
-
-
-@superuser_required
 def admin_apply_normalization(request):
     if request.method == 'POST':
         cycle_id = request.POST.get('cycle_id')

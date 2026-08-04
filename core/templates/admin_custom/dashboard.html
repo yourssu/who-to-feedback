@@ -62,10 +62,10 @@
   </div>
 </section>
 {% endif %}
+{% endif %}
 
 <div class="modal" id="cycleModal" role="dialog" aria-modal="true" aria-labelledby="cycleTitle" aria-hidden="true">
   <div class="modal-content"><div class="modal-head"><div><span class="eyebrow">NEW CYCLE</span><h2 class="modal-title" id="cycleTitle">새 피어리뷰 회차</h2></div><button type="button" class="modal-close" data-modal-close aria-label="닫기">×</button></div>
   <form method="post" action="{% url 'admin_create_cycle' %}">{% csrf_token %}<div class="form-group"><label class="form-label" for="cycle-name">회차 이름</label><input class="form-control" id="cycle-name" name="title" placeholder="예: 2026 하반기 피어리뷰" required></div><div class="form-group"><label class="form-label" for="cycle-start">시작 일시</label><input class="form-control" id="cycle-start" type="datetime-local" name="start_at" required></div><div class="form-group"><label class="form-label" for="cycle-end">마감 일시</label><input class="form-control" id="cycle-end" type="datetime-local" name="end_at" required></div><div class="modal-actions"><button class="btn" type="button" data-modal-close>취소</button><button class="btn btn-primary" type="submit">회차 만들기</button></div></form></div>
 </div>
-{% endif %}
 {% endblock %}
