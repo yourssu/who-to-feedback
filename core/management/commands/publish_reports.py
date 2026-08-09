@@ -18,20 +18,21 @@ class Command(BaseCommand):
         except ReviewCycle.DoesNotExist:
             raise CommandError(f"ReviewCycle with ID {cycle_id} does not exist.")
 
-        reports = cycle.reports.all()
+        reports = cycle.reports.filter(validation_status='APPROVED')
         if not reports.exists():
-            self.stdout.write(self.style.WARNING(f"No reports found for cycle '{cycle.title}'. Please run generate_reports first."))
+            self.stdout.write(self.style.WARNING(f"No approved reports found for cycle '{cycle.title}'. Please review and approve reports first."))
             return
 
         slack = SlackService()
         sent_count = 0
 
         for r in reports:
-            if r.pdf_file and not r.is_sent:
-                success, _ = slack.send_pdf_report_dm(
+            if r.html_file and not r.is_sent:
+                success, _ = slack.send_html_report_dm(
                     member=r.reviewee,
-                    pdf_file_path=r.pdf_file.path,
-                    cycle_title=cycle.title
+                    html_file_path=r.html_file.path,
+                    cycle_title=cycle.title,
+                    cycle=cycle
                 )
                 if success:
                     r.is_sent = True
@@ -43,5 +44,5 @@ class Command(BaseCommand):
         cycle.save()
 
         self.stdout.write(self.style.SUCCESS(
-            f"Successfully published {sent_count} PDF reports to Reviewees via Slack DM for cycle '{cycle.title}'."
+            f"Successfully published {sent_count} HTML reports to Reviewees via Slack DM for cycle '{cycle.title}'."
         ))

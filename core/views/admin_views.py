@@ -11,38 +11,30 @@ from django.utils import timezone
 
 from core.models import (
     Member, ReviewCycle, ReviewQuestion, QuestionOption,
-    ReviewAssignment, ReviewAuthCode, ReviewReport, DataValidationLog, SlackDeliveryLog,
+    ReviewAssignment, ReviewAnswer, ReviewAuthCode, ReviewReport, DataValidationLog, SlackDeliveryLog,
     ReviewCycleVersionLog
 )
 from core.services.layout_service import LayoutCheckService
-from core.services.report_service import PDFReportService, PPTReportService, ReportManagementService
+from core.services.report_service import HTMLReportService, ReportManagementService
 from core.services.slack_service import SlackService
 from core.services.validation_service import DataValidationService
 
 
 def superuser_required(view_func):
-    """superuser 계정 또는 Member.role == 'ADMIN'으로 로그인한 관리자만 접근 가능 (DB 초기 상태 시 /setup/ 자동 안내)"""
+    """Django superuser 계정으로 로그인한 관리자만 접근 가능 (DB 초기 상태 시 /setup/ 자동 안내)"""
     @wraps(view_func)
     def _wrapped_view(request, *args, **kwargs):
         has_superuser = User.objects.filter(is_superuser=True).exists()
-        has_admin_member = Member.objects.filter(role='ADMIN').exists()
 
-        # DB에 관리자가 0명인 초기 상태 시 setup_wizard로 안내
-        if not has_superuser and not has_admin_member:
+        # DB에 superuser가 0명인 초기 상태 시 setup_wizard로 안내
+        if not has_superuser:
             return redirect('setup_wizard')
 
-        # 1. Django Superuser 로그인 세션 확인
+        # Django Superuser 로그인 세션 확인
         if request.user.is_authenticated and request.user.is_superuser:
             return view_func(request, *args, **kwargs)
 
-        # 2. Member PIN 코드 로그인 중 role=='ADMIN' 확인
-        member_id = request.session.get('member_id')
-        if member_id:
-            member = Member.objects.filter(id=member_id).first()
-            if member and member.role == 'ADMIN':
-                return view_func(request, *args, **kwargs)
-
-        messages.error(request, "관리자 권한이 필요합니다.")
+        messages.error(request, "관리자(Superuser) 권한이 필요합니다.")
         return redirect(f"/admin/login/?next={request.path}")
     return _wrapped_view
 
@@ -90,7 +82,11 @@ def admin_dashboard(request):
 @superuser_required
 def admin_create_cycle(request):
     if request.method == 'POST':
-        title = request.POST.get('title')
+        title = (request.POST.get('title') or '').strip()
+        if not title:
+            messages.error(request, "피어리뷰 회차명을 입력해 주세요.")
+            return redirect('admin_dashboard')
+
         start_at_raw = request.POST.get('start_at')
         end_at_raw = request.POST.get('end_at')
         reviewer_notice = request.POST.get('reviewer_notice_message', '').strip()
@@ -108,8 +104,8 @@ def admin_create_cycle(request):
                 return redirect('admin_dashboard')
 
         cycle = ReviewCycle.objects.create(
-        title=title,
-        start_at=start_at,
+            title=title,
+            start_at=start_at,
             end_at=end_at,
             status='DRAFT',
             reviewer_notice_message=reviewer_notice or "본인에게 배정된 리뷰만 표시되며 관리자 기능에는 접근할 수 없습니다."
@@ -151,22 +147,35 @@ def admin_members(request):
     })
 
 
+def get_review_eligible_members():
+    """Django superuser 계정 이메일을 가진 Member는 피어리뷰어/피평가자 매칭 대상에서 제외"""
+    superuser_emails = User.objects.filter(is_superuser=True).values_list('email', flat=True)
+    return Member.objects.exclude(email__in=superuser_emails)
+
+
 @superuser_required
 def admin_add_member(request):
     if request.method == 'POST':
-        name = request.POST.get('name')
-        email = request.POST.get('email')
-        slack_user_id = request.POST.get('slack_user_id')
-        department = request.POST.get('department', '')
-        role = request.POST.get('role', 'MEMBER')
+        import re
+        name = (request.POST.get('name') or '').strip()
+        email = (request.POST.get('email') or '').strip()
+        slack_user_id = (request.POST.get('slack_user_id') or '').strip()
+        department = (request.POST.get('department') or '').strip()
+
+        if not name or not email:
+            messages.error(request, "이름과 이메일은 필수 입력 항목입니다.")
+            return redirect('admin_members')
+
+        # Slack User ID 형식 검증 (유효하지 않으면 빈값 처리하여 자동 룩업에 맡김)
+        valid_id_regex = re.compile(r'^[UWD][A-Z0-9]{8,14}$')
+        final_slack_id = slack_user_id if valid_id_regex.match(slack_user_id) else ""
 
         try:
             member = Member.objects.create(
                 name=name,
                 email=email,
-                slack_user_id=slack_user_id,
-                department=department,
-                role=role
+                slack_user_id=final_slack_id,
+                department=department
             )
             messages.success(request, f"팀원 '{member.name}' 님이 성공적으로 추가되었습니다!")
         except IntegrityError:
@@ -198,11 +207,13 @@ def admin_validation(request, cycle_id=None):
 
     logs = DataValidationLog.objects.filter(cycle=cycle) if cycle else []
     suggestions = DataValidationService.get_normalization_suggestions(cycle) if cycle else []
+    excluded_answers = ReviewAnswer.objects.filter(assignment__cycle=cycle, is_excluded_from_report=True).select_related('assignment__reviewer', 'assignment__reviewee', 'question') if cycle else []
 
     return render(request, 'admin_custom/validation.html', {
         'cycle': cycle,
         'logs': logs,
         'suggestions': suggestions,
+        'excluded_answers': excluded_answers,
         'active_menu': 'validation',
     })
 
@@ -219,6 +230,19 @@ def admin_apply_normalization(request):
             count = DataValidationService.apply_normalization(cycle, raw_names, target_name)
             messages.success(request, f"총 {count}명의 이름이 '{target_name}'로 정규화 병합되었습니다!")
 
+    return redirect('admin_validation')
+
+
+@superuser_required
+def admin_toggle_answer_exclusion(request, answer_id):
+    """품질 필터링으로 제외된 답변을 리포트 대상에 복원/제외 토글하는 API"""
+    if request.method == 'POST':
+        answer = get_object_or_404(ReviewAnswer, id=answer_id)
+        answer.is_excluded_from_report = not answer.is_excluded_from_report
+        answer.save()
+        status_str = "제외" if answer.is_excluded_from_report else "복원"
+        messages.success(request, f"Q{answer.question.order} 답변이 리포트 반영 대상에서 [{status_str}] 되었습니다.")
+        return redirect('admin_validation_detail', cycle_id=answer.assignment.cycle.id)
     return redirect('admin_validation')
 
 
@@ -246,11 +270,19 @@ def admin_add_question(request, cycle_id):
             messages.error(request, "피어리뷰가 이미 시작(ACTIVE)되거나 완료된 상태에서는 질문 문항을 추가할 수 없습니다.")
             return redirect('admin_questions', cycle_id=cycle_id)
 
-        order = request.POST.get('order', 1)
-        question_type = request.POST.get('question_type')
+        content = (request.POST.get('content') or '').strip()
+        if not content:
+            messages.error(request, "질문 내용을 입력해 주세요.")
+            return redirect('admin_questions', cycle_id=cycle_id)
+
+        try:
+            order = int(request.POST.get('order', 1))
+        except (ValueError, TypeError):
+            order = cycle.questions.count() + 1
+
+        question_type = request.POST.get('question_type', 'RATING')
         scale_type = request.POST.get('scale_type', 'NUMERIC_5')
-        category = request.POST.get('category', '기본 역량').strip() or '기본 역량'
-        content = request.POST.get('content')
+        category = (request.POST.get('category') or '기본 역량').strip() or '기본 역량'
         image = request.FILES.get('image')
 
         ReviewQuestion.objects.create(
@@ -295,7 +327,15 @@ def admin_add_option(request, question_id):
             messages.error(request, "피어리뷰가 시작(ACTIVE)된 이후에는 선택지를 추가할 수 없습니다.")
             return redirect('admin_questions', cycle_id=cycle.id)
 
-        option_text = request.POST.get('option_text')
+        if question.question_type not in ['SINGLE_CHOICE', 'MULTIPLE_CHOICE']:
+            messages.error(request, "객관식 문항(단일 선택/다중 선택)에만 선택지를 추가할 수 있습니다.")
+            return redirect('admin_questions', cycle_id=cycle.id)
+
+        option_text = (request.POST.get('option_text') or '').strip()
+        if not option_text:
+            messages.error(request, "선택지 내용을 입력해 주세요.")
+            return redirect('admin_questions', cycle_id=cycle.id)
+
         order = question.options.count() + 1
 
         QuestionOption.objects.create(
@@ -309,6 +349,26 @@ def admin_add_option(request, question_id):
     return redirect('admin_dashboard')
 
 
+@superuser_required
+def admin_delete_option(request, option_id):
+    """객관식 문항 선택지 항목 삭제 API"""
+    if request.method == 'POST':
+        option = get_object_or_404(QuestionOption, id=option_id)
+        cycle = option.question.cycle
+
+        if cycle.is_question_locked:
+            messages.error(request, "피어리뷰가 시작(ACTIVE)된 이후에는 선택지를 삭제할 수 없습니다.")
+            return redirect('admin_questions', cycle_id=cycle.id)
+
+        cycle_id = cycle.id
+        option_text = option.option_text
+        option.delete()
+        messages.info(request, f"선택지 '{option_text}' 항목이 삭제되었습니다.")
+        return redirect('admin_questions', cycle_id=cycle_id)
+
+    return redirect('admin_dashboard')
+
+
 # ==========================================
 # 4. PAGE 4: 피어리뷰 매칭 (a-assignments)
 # ==========================================
@@ -316,8 +376,8 @@ def admin_add_option(request, question_id):
 def admin_assignments(request, cycle_id):
     cycle = get_object_or_404(ReviewCycle, id=cycle_id)
     assignments = cycle.assignments.all().select_related('reviewer', 'reviewee')
-    members = Member.objects.all()
-    departments = Member.objects.values_list('department', flat=True).distinct()
+    members = get_review_eligible_members()
+    departments = members.values_list('department', flat=True).distinct()
 
     return render(request, 'admin_custom/assignments.html', {
         'cycle': cycle,
@@ -341,6 +401,12 @@ def admin_add_assignment(request, cycle_id):
 
         reviewer = get_object_or_404(Member, id=reviewer_id)
         reviewee = get_object_or_404(Member, id=reviewee_id)
+
+        # Superuser 연결 이메일 매칭 방어
+        superuser_emails = list(User.objects.filter(is_superuser=True).values_list('email', flat=True))
+        if reviewer.email in superuser_emails or reviewee.email in superuser_emails:
+            messages.error(request, "최고관리자(Superuser) 계정은 피어리뷰 매칭 대상에서 제외됩니다.")
+            return redirect('admin_assignments', cycle_id=cycle_id)
 
         try:
             assignment, created = ReviewAssignment.objects.get_or_create(
@@ -383,13 +449,16 @@ def admin_delete_assignment(request, assignment_id):
 def admin_auto_match(request, cycle_id):
     if request.method == 'POST':
         cycle = get_object_or_404(ReviewCycle, id=cycle_id)
-        members = Member.objects.all()
+        match_type = request.POST.get('match_type', 'ALL')  # 'ALL' or 'SAME_DEPT'
+        members = get_review_eligible_members()
         created_count = 0
         new_reviewers = set()
 
         for r in members:
             for e in members:
                 if r != e:
+                    if match_type == 'SAME_DEPT' and r.department != e.department:
+                        continue
                     _, created = ReviewAssignment.objects.get_or_create(
                         cycle=cycle, reviewer=r, reviewee=e
                     )
@@ -436,19 +505,25 @@ def admin_status(request):
 @superuser_required
 def admin_status_detail(request, cycle_id):
     cycle = get_object_or_404(ReviewCycle, id=cycle_id)
-    reviewers = Member.objects.filter(given_reviews__cycle=cycle).distinct()
+    assignments_all = ReviewAssignment.objects.filter(cycle=cycle).select_related('reviewer', 'reviewee')
+
+    reviewer_map = {}
+    for a in assignments_all:
+        if a.reviewer not in reviewer_map:
+            reviewer_map[a.reviewer] = []
+        reviewer_map[a.reviewer].append(a)
 
     reviewer_status = []
-    for r in reviewers:
-        assignments = ReviewAssignment.objects.filter(cycle=cycle, reviewer=r)
-        done_count = assignments.filter(is_submitted=True).count()
+    for r, assignments in reviewer_map.items():
+        total_count = len(assignments)
+        done_count = sum(1 for a in assignments if a.is_submitted)
         unsubmitted_reviewees = [a.reviewee for a in assignments if not a.is_submitted]
 
         reviewer_status.append({
             'reviewer': r,
-            'total_count': assignments.count(),
+            'total_count': total_count,
             'done_count': done_count,
-            'is_all_done': (assignments.count() > 0 and done_count == assignments.count()),
+            'is_all_done': (total_count > 0 and done_count == total_count),
             'unsubmitted_reviewees': unsubmitted_reviewees,
         })
 
@@ -469,10 +544,22 @@ def admin_start_cycle_action(request, cycle_id):
             messages.error(request, f"[{cycle.title}] 회차는 이미 시작되었거나 종료되었습니다 (현재 상태: {cycle.get_status_display()}).")
             return redirect('admin_status_detail', cycle_id=cycle_id)
 
+        # 마감 일시(end_at) 검증
+        if cycle.end_at and cycle.end_at <= timezone.now():
+            messages.error(request, f"[{cycle.title}] 마감 일시({cycle.end_at.strftime('%Y-%m-%d %H:%M')})가 현재 시각보다 이전으로 설정되어 회차를 시작할 수 없습니다.")
+            return redirect('admin_status_detail', cycle_id=cycle_id)
+
         # 질문 문항 검증
-        if cycle.questions.count() == 0:
+        questions = cycle.questions.all()
+        if questions.count() == 0:
             messages.error(request, f"[{cycle.title}] 질문 문항을 1개 이상 등록해야 회차를 시작할 수 있습니다.")
             return redirect('admin_status_detail', cycle_id=cycle_id)
+
+        # 선택지 없는 객관식 질문 존재 검증
+        for q in questions.filter(question_type__in=['SINGLE_CHOICE', 'MULTIPLE_CHOICE']):
+            if q.options.count() == 0:
+                messages.error(request, f"Q{q.order}. 객관식 질문에 선택지가 작성되지 않았습니다. 선택지를 추가한 후 회차를 시작해 주세요.")
+                return redirect('admin_questions', cycle_id=cycle_id)
 
         # 매칭 검증
         if cycle.assignments.count() == 0:
@@ -502,20 +589,23 @@ def admin_start_cycle_action(request, cycle_id):
 
 @superuser_required
 def admin_close_cycle_action(request, cycle_id):
-    """관리자가 직접 수동 마감/종료하는 API"""
+    """관리자가 직접 수동 마감/종료하는 API (HTTP 타임아웃 방지를 위해 리포트 생성은 비동기 백그라운드 실행)"""
     if request.method == 'POST':
         cycle = get_object_or_404(ReviewCycle, id=cycle_id)
+
+        if cycle.status != 'ACTIVE':
+            messages.error(request, f"[{cycle.title}] 회차는 진행 중(ACTIVE) 상태일 때만 마감할 수 있습니다 (현재 상태: {cycle.get_status_display()}).")
+            return redirect('admin_status_detail', cycle_id=cycle_id)
+
         cycle.status = 'COMPLETED'
         cycle.end_at = timezone.now()
         cycle.save()
 
-        pdf_reports = PDFReportService.generate_all_reports_for_cycle(cycle)
-        reviewees = set(a.reviewee for a in cycle.assignments.all())
-        for rev in reviewees:
-            PPTReportService.generate_ppt_report(cycle, rev)
-            LayoutCheckService.check_layout_overflow(cycle, rev)
+        # Cloudflare 100초 HTTP 524 타임아웃 방지: 비동기 스레드 실행
+        thread = threading.Thread(target=_background_report_generation, args=(cycle.id,), daemon=True)
+        thread.start()
 
-        messages.success(request, f"[{cycle.title}] 회차가 관리자에 의해 마감/종료되었습니다. 리포트 생성이 완료되었습니다.")
+        messages.success(request, f"[{cycle.title}] 회차가 관리자에 의해 마감/종료되었습니다. 리포트 생성 백그라운드 작업이 시작되었습니다.")
         return redirect('admin_reports', cycle_id=cycle_id)
 
     return redirect('admin_status_detail', cycle_id=cycle_id)
@@ -545,20 +635,22 @@ def admin_send_reminder_action(request, cycle_id):
 
 
 def _background_report_generation(cycle_id):
-    """Cloudflare 100초 HTTP 524 타임아웃 방지를 위한 비동기 백그라운드 PDF/PPT 생성 스레드"""
+    """Cloudflare 100초 HTTP 524 타임아웃 방지를 위한 비동기 백그라운드 HTML 리포트 생성 스레드"""
     connection.close()  # 스레드 전용 독립 DB 커넥션 생성 보장
     try:
         cycle = ReviewCycle.objects.get(id=cycle_id)
         cycle.status = 'COMPLETED'
         cycle.save()
-        pdf_reports = PDFReportService.generate_all_reports_for_cycle(cycle)
+        html_reports = HTMLReportService.generate_all_html_reports(cycle)
         reviewees = set(a.reviewee for a in cycle.assignments.all())
         for rev in reviewees:
-            PPTReportService.generate_ppt_report(cycle, rev)
             LayoutCheckService.check_layout_overflow(cycle, rev)
     except Exception as e:
         import logging
         logging.getLogger(__name__).error(f"Background report generation error: {e}")
+        ReviewReport.objects.filter(cycle_id=cycle_id, validation_status='NEEDS_REVIEW').update(
+            validation_status='FAILED', error_log=str(e)
+        )
 
 
 @superuser_required
@@ -574,39 +666,29 @@ def admin_generate_reports_action(request, cycle_id):
         thread = threading.Thread(target=_background_report_generation, args=(cycle.id,), daemon=True)
         thread.start()
 
-        messages.info(request, f"[{cycle.title}] 회차의 전체 6K 리포트 일괄 생성 작업이 백그라운드에서 시작되었습니다. 생성 진행 상황은 잠시 후 페이지를 새로고침하여 확인할 수 있습니다.")
+        messages.info(request, f"[{cycle.title}] 회차의 전체 HTML 결과 리포트 일괄 생성 작업이 백그라운드에서 시작되었습니다. 생성 진행 상황은 잠시 후 페이지를 새로고침하여 확인할 수 있습니다.")
         return redirect('admin_reports', cycle_id=cycle_id)
 
     return redirect('admin_status')
 
 
 # ==========================================
-# 6. ⭐ PAGE 6: 리포트 검토 & PPT/버전 관리 (a-reports)
+# 6. ⭐ PAGE 6: 리포트 검토 & 버전 관리 (a-reports)
 # ==========================================
 @superuser_required
 def admin_reports(request, cycle_id):
     cycle = get_object_or_404(ReviewCycle, id=cycle_id)
 
-    if cycle.is_all_submitted and not cycle.reports.exists():
-        PDFReportService.generate_all_reports_for_cycle(cycle)
-        reviewees = set(a.reviewee for a in cycle.assignments.all())
-        for rev in reviewees:
-            PPTReportService.generate_ppt_report(cycle, rev)
-            LayoutCheckService.check_layout_overflow(cycle, rev)
-        if cycle.status == 'ACTIVE':
-            cycle.status = 'COMPLETED'
-            cycle.save()
-
     reports = cycle.reports.all().select_related('reviewee')
     reports_data = []
 
     for r in reports:
-        preview_data = PDFReportService.compile_feedback_data(cycle, r.reviewee)
+        preview_data = HTMLReportService.compile_feedback_data(cycle, r.reviewee)
         reports_data.append({
             'report_id': r.id,
             'reviewee': r.reviewee,
-            'pdf_file': r.pdf_file,
-            'ppt_file': r.ppt_file,
+            'html_file': r.html_file,
+            'pdf_file': r.html_file,  # 템플릿 호환용
             'is_sent': r.is_sent,
             'validation_status': r.get_validation_status_display(),
             'admin_memo': r.admin_memo,
@@ -645,7 +727,7 @@ def admin_generate_sample_reports(request, cycle_id):
     if request.method == 'POST':
         cycle = get_object_or_404(ReviewCycle, id=cycle_id)
         reports = ReportManagementService.generate_sample_reports(cycle, sample_count=3)
-        messages.success(request, f"샘플 {len(reports)}명에 대한 테스트 리포트(PDF/PPT)가 성공적으로 생성되었습니다!")
+        messages.success(request, f"샘플 {len(reports)}명에 대한 테스트 리포트(HTML)가 성공적으로 생성되었습니다!")
         return redirect('admin_reports', cycle_id=cycle_id)
 
     return redirect('admin_dashboard')
@@ -677,7 +759,7 @@ def admin_preview_report_html(request, report_id):
     from django.template.loader import render_to_string
 
     report = get_object_or_404(ReviewReport, id=report_id)
-    context = PDFReportService.compile_feedback_data(report.cycle, report.reviewee)
+    context = HTMLReportService.compile_feedback_data(report.cycle, report.reviewee)
 
     if report.cycle.use_custom_template and report.cycle.custom_html_file and os.path.exists(report.cycle.custom_html_file.path):
         with open(report.cycle.custom_html_file.path, 'r', encoding='utf-8') as f:
@@ -692,32 +774,37 @@ def admin_preview_report_html(request, report_id):
 
 @superuser_required
 def admin_regenerate_report(request, report_id):
-    """1클릭 개별 리포트(PDF/PPT) 재시도 및 재생성"""
+    """1클릭 개별 HTML 리포트 재시도 및 재생성"""
     if request.method == 'POST':
         report = get_object_or_404(ReviewReport, id=report_id)
-        PDFReportService.generate_pdf_report(report.cycle, report.reviewee)
-        PPTReportService.generate_ppt_report(report.cycle, report.reviewee)
+        old_status = report.validation_status
+        HTMLReportService.generate_html_report(report.cycle, report.reviewee)
         LayoutCheckService.check_layout_overflow(report.cycle, report.reviewee)
-        messages.success(request, f"'{report.reviewee.name}' 님의 리포트(PDF/PPT)가 재생성 되었습니다.")
+
+        if old_status == 'NEEDS_REVIEW':
+            report.refresh_from_db()
+            report.validation_status = 'NEEDS_REVIEW'
+            report.save(update_fields=['validation_status'])
+
+        messages.success(request, f"'{report.reviewee.name}' 님의 HTML 리포트가 재생성 되었습니다.")
         return redirect('admin_reports', cycle_id=report.cycle.id)
 
     return redirect('admin_dashboard')
 
 
-@superuser_required
-def admin_publish_reports_action(request, cycle_id):
-    if request.method == 'POST':
-        cycle = get_object_or_404(ReviewCycle, id=cycle_id)
-        reports = cycle.reports.all()
-
+def _background_publish_reports(cycle_id):
+    """Cloudflare HTTP 524 타임아웃 방지를 위한 백그라운드 스레드 배포 처리"""
+    connection.close()
+    try:
+        cycle = ReviewCycle.objects.get(id=cycle_id)
+        reports = cycle.reports.filter(validation_status='APPROVED')
         slack = SlackService()
-        sent_count = 0
 
         for r in reports:
-            if r.pdf_file and r.pdf_file.name and not r.is_sent:
-                success, _ = slack.send_pdf_report_dm(
+            if r.html_file and r.html_file.name and not r.is_sent:
+                success, _ = slack.send_html_report_dm(
                     member=r.reviewee,
-                    pdf_file_path=r.pdf_file.path,
+                    html_file_path=r.html_file.path,
                     cycle_title=cycle.title,
                     cycle=cycle
                 )
@@ -725,12 +812,22 @@ def admin_publish_reports_action(request, cycle_id):
                     r.is_sent = True
                     r.sent_at = timezone.now()
                     r.save()
-                    sent_count += 1
 
         cycle.status = 'CLOSED'
         cycle.save()
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Background publish reports error: {e}")
 
-        messages.success(request, f"총 {sent_count}명의 피어리뷰 대상자에게 Slack DM으로 PDF 리포트 발송이 최종 배포되었습니다!")
+
+@superuser_required
+def admin_publish_reports_action(request, cycle_id):
+    if request.method == 'POST':
+        cycle = get_object_or_404(ReviewCycle, id=cycle_id)
+        thread = threading.Thread(target=_background_publish_reports, args=(cycle.id,), daemon=True)
+        thread.start()
+
+        messages.info(request, f"[{cycle.title}] 회차 승인된 HTML 리포트의 최종 Slack DM 배포 작업이 백그라운드에서 시작되었습니다.")
         return redirect('admin_reports', cycle_id=cycle_id)
 
     return redirect('admin_dashboard')
@@ -775,7 +872,7 @@ def admin_send_message(request):
 
 @superuser_required
 def admin_delivery_checklist(request, cycle_id):
-    """발송 전 이름 / 팀 / Slack ID / PDF 존재 여부 / 승인 여부 체크리스트"""
+    """발송 전 이름 / 팀 / Slack ID / HTML 존재 여부 / 승인 여부 체크리스트"""
     cycle = get_object_or_404(ReviewCycle, id=cycle_id)
     checklist = ReportManagementService.get_delivery_checklist(cycle)
 
@@ -801,14 +898,28 @@ def admin_cycle_history(request, cycle_id):
 
 @superuser_required
 def admin_retry_failed_messages(request):
-    """실패했던 Slack DM 건 1클릭 전원 재발송"""
+    """실패했던 Slack DM 건 1클릭 전원 재발송 (DM 종류별 정확한 맵핑)"""
     if request.method == 'POST':
         failed_logs = SlackDeliveryLog.objects.filter(is_success=False)
         slack = SlackService()
         retried_count = 0
 
         for log in failed_logs:
-            success, _ = slack.send_failed_reminders_retry(log.member, log.message_content, log.cycle)
+            success = False
+            if log.delivery_type == 'REPORT':
+                report = ReviewReport.objects.filter(cycle=log.cycle, reviewee=log.member).first()
+                if report and report.html_file and os.path.exists(report.html_file.path):
+                    cycle_title = log.cycle.title if log.cycle else "피어리뷰"
+                    success, _ = slack.send_html_report_dm(log.member, report.html_file.path, cycle_title, log.cycle)
+            elif log.delivery_type == 'AUTH_CODE':
+                auth_code = ReviewAuthCode.objects.filter(member=log.member, cycle=log.cycle).first()
+                if auth_code:
+                    success, _ = slack.send_auth_code_dm(log.member, auth_code.code, log.cycle)
+            elif log.delivery_type == 'CUSTOM_MSG':
+                success, _ = slack.send_custom_dm(log.member, log.message_content, log.cycle)
+            else:
+                success, _ = slack.send_failed_reminders_retry(log.member, log.message_content, log.cycle)
+
             if success:
                 log.is_success = True
                 log.save()
@@ -823,9 +934,7 @@ def admin_send_test_dm(request):
     """전체 발송 전 관리자 본인에게 테스트 DM 전송"""
     if request.method == 'POST':
         slack = SlackService()
-        admin_member = Member.objects.filter(email=request.user.email).first()
-        if not admin_member:
-            admin_member = Member.objects.filter(role='ADMIN').first() or Member.objects.first()
+        admin_member = Member.objects.filter(email=request.user.email).first() or Member.objects.first()
 
         if admin_member:
             success, _ = slack.send_test_dm(admin_member)
@@ -839,12 +948,26 @@ def admin_send_test_dm(request):
 
 @superuser_required
 def admin_upload_custom_template(request, cycle_id):
-    """커스텀 HTML 결과지 양식 파일 업로드 처리"""
+    """커스텀 HTML 결과지 양식 파일 업로드 처리 (구문 검사 추가)"""
+    from django.template import Template, TemplateSyntaxError
     cycle = get_object_or_404(ReviewCycle, id=cycle_id)
+
     if request.method == 'POST' and request.FILES.get('html_file'):
         html_file = request.FILES['html_file']
         if not html_file.name.lower().endswith(('.html', '.htm')):
             messages.error(request, "올바른 HTML 파일(.html, .htm)을 업로드해 주세요.")
+            return redirect('admin_reports', cycle_id=cycle.id)
+
+        # 템플릿 구문 사전 파싱 테스트
+        try:
+            template_content = html_file.read().decode('utf-8')
+            Template(template_content)
+            html_file.seek(0)
+        except TemplateSyntaxError as e:
+            messages.error(request, f"업로드한 HTML 템플릿 구문에 에러가 있습니다: {str(e)}")
+            return redirect('admin_reports', cycle_id=cycle.id)
+        except Exception as e:
+            messages.error(request, f"파일 인코딩 또는 템플릿 검사 실패: {str(e)}")
             return redirect('admin_reports', cycle_id=cycle.id)
 
         cycle.custom_html_file = html_file

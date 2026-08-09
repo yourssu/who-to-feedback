@@ -1,10 +1,10 @@
+from django.core.management.base import BaseCommand, CommandError
 from core.models import ReviewCycle
-from core.services.report_service import PDFReportService
-
+from core.services.report_service import HTMLReportService
 
 
 class Command(BaseCommand):
-    help = "100% 전원 작성 완료된 회차의 피어리뷰 결과 PDF 리포트를 일괄 생성합니다."
+    help = "100% 전원 작성 완료된 회차의 피어리뷰 결과 HTML 리포트를 일괄 생성합니다."
 
     def add_arguments(self, parser):
         parser.add_argument('--cycle-id', type=int, required=True, help="피어리뷰 회차 ID")

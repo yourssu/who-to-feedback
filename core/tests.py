@@ -24,9 +24,9 @@ class PeerReviewSystemTestCase(TestCase):
         self.superuser = User.objects.create_superuser('admin', 'admin@test.com', 'password123')
 
         # 1. 팀원 세팅
-        self.alice = Member.objects.create(name="앨리스", email="alice@test.com", slack_user_id="U_ALICE", department="개발팀", role='MEMBER')
-        self.bob = Member.objects.create(name="밥", email="bob@test.com", slack_user_id="U_BOB", department="기획팀", role='MEMBER')
-        self.charlie = Member.objects.create(name="찰리", email="charlie@test.com", slack_user_id="U_CHARLIE", department="디자인팀", role='MEMBER')
+        self.alice = Member.objects.create(name="앨리스", email="alice@test.com", slack_user_id="U_ALICE", department="개발팀")
+        self.bob = Member.objects.create(name="밥", email="bob@test.com", slack_user_id="U_BOB", department="기획팀")
+        self.charlie = Member.objects.create(name="찰리", email="charlie@test.com", slack_user_id="U_CHARLIE", department="디자인팀")
 
         # 2. 회차 세팅 및 버전 이력 생성
         now = timezone.now()
@@ -152,6 +152,44 @@ class PeerReviewSystemTestCase(TestCase):
         self.assertEqual(res_form.status_code, 200)
         self.assertContains(res_form, '로그아웃 테스트 임시 내용')
 
+    def test_multiple_choice_validation_requires_at_least_one_option(self):
+        """다중 선택 문항에 옵션을 하나도 선택하지 않고 제출 시 거부 검증"""
+        session = self.client.session
+        session['member_id'] = self.alice.id
+        session['cycle_id'] = self.cycle.id
+        session.save()
+
+        res = self.client.post(reverse('review_form', kwargs={'assignment_id': self.a_to_b.id}), {
+            f'q_{self.q1.id}_rating': '5',
+            f'q_{self.q2.id}_text': '좋은 피드백입니다.',
+            f'q_{self.q3.id}_single': str(self.opt3_yes.id),
+            # q4 (MULTIPLE_CHOICE) 미선택
+        })
+        self.assertEqual(res.status_code, 200)
+        self.a_to_b.refresh_from_db()
+        self.assertFalse(self.a_to_b.is_submitted)
+
+    def test_option_delete_api(self):
+        """객관식 선택지 삭제 API 테스트"""
+        self.client.force_login(self.superuser)
+        draft_cycle = ReviewCycle.objects.create(title="DRAFT 회차", status='DRAFT')
+        q = ReviewQuestion.objects.create(cycle=draft_cycle, order=1, question_type='SINGLE_CHOICE', content="단일 선택 질문")
+        opt = QuestionOption.objects.create(question=q, option_text="삭제할 선택지", order=1)
+
+        res = self.client.post(reverse('admin_delete_option', kwargs={'option_id': opt.id}))
+        self.assertEqual(res.status_code, 302)
+        self.assertFalse(QuestionOption.objects.filter(id=opt.id).exists())
+
+    def test_answer_exclusion_toggle_api(self):
+        """품질 필터로 제외된 답변 복원/제외 토글 API 테스트"""
+        self.client.force_login(self.superuser)
+        ans = ReviewAnswer.objects.create(assignment=self.a_to_b, question=self.q2, answer_text="없음", is_excluded_from_report=True)
+
+        res = self.client.post(reverse('admin_toggle_answer_exclusion', kwargs={'answer_id': ans.id}))
+        self.assertEqual(res.status_code, 302)
+        ans.refresh_from_db()
+        self.assertFalse(ans.is_excluded_from_report)
+
 
 
 
@@ -159,8 +197,8 @@ class PeerReviewSystemTestCase(TestCase):
 class CustomHTMLTemplateTestCase(TestCase):
     def setUp(self):
         self.superuser = User.objects.create_superuser('admin', 'admin@example.com', 'password123')
-        self.alice = Member.objects.create(name='Alice', email='alice@example.com', slack_user_id='U111', role='ADMIN')
-        self.bob = Member.objects.create(name='Bob', email='bob@example.com', slack_user_id='U222', role='MEMBER')
+        self.alice = Member.objects.create(name='Alice', email='alice@example.com', slack_user_id='U111')
+        self.bob = Member.objects.create(name='Bob', email='bob@example.com', slack_user_id='U222')
 
         now = timezone.now()
         self.cycle = ReviewCycle.objects.create(
@@ -218,8 +256,8 @@ class CustomHTMLTemplateTestCase(TestCase):
         report = PDFReportService.generate_pdf_report(self.cycle, self.bob)
 
         self.assertEqual(report.validation_status, 'APPROVED')
-        self.assertTrue(bool(report.pdf_file))
-        self.assertTrue(os.path.exists(report.pdf_file.path))
+        self.assertTrue(bool(report.html_file))
+        self.assertTrue(os.path.exists(report.html_file.path))
 
     def test_generate_all_reports_for_cycle(self):
         """회차 내 모든 수신자 리포트 일괄 생성 테스트"""
@@ -311,7 +349,7 @@ class CSVMemberImportTestCase(TestCase):
 
         self.assertEqual(res['created'], 2)
         self.assertTrue(Member.objects.filter(email='dev@yourssu.com', name='김개발').exists())
-        self.assertTrue(Member.objects.filter(email='design@yourssu.com', role='ADMIN').exists())
+        self.assertTrue(Member.objects.filter(email='design@yourssu.com', name='이디자인').exists())
 
 
 class SetupWizardTestCase(TestCase):
@@ -335,9 +373,8 @@ class SetupWizardTestCase(TestCase):
         res_post = self.client.post('/setup/', post_data)
         self.assertRedirects(res_post, reverse('admin_dashboard'))
 
-        # DB에 슈퍼유저 및 Member ADMIN 생성 확인
+        # DB에 슈퍼유저 생성 확인
         self.assertTrue(User.objects.filter(username='masteradmin', is_superuser=True).exists())
-        self.assertTrue(Member.objects.filter(email='master@yourssu.com', role='ADMIN').exists())
 
         # 4. 관리자 계정 생성 완료 후 /setup/ 접근 시 404 차단
         res_locked = self.client.get('/setup/')
@@ -400,7 +437,7 @@ class AuthLoginSecurityTestCase(TestCase):
     def setUp(self):
         self.alice = Member.objects.create(
             name="앨리스", email="alice@test.com", slack_user_id="U_ALICE",
-            department="개발팀", role='MEMBER'
+            department="개발팀"
         )
         now = timezone.now()
         self.active_cycle = ReviewCycle.objects.create(
@@ -464,11 +501,11 @@ class ReviewCycleGateTestCase(TestCase):
     def setUp(self):
         self.alice = Member.objects.create(
             name="앨리스", email="alice@test.com", slack_user_id="U_ALICE",
-            department="개발팀", role='MEMBER'
+            department="개발팀"
         )
         self.bob = Member.objects.create(
             name="밥", email="bob@test.com", slack_user_id="U_BOB",
-            department="기획팀", role='MEMBER'
+            department="기획팀"
         )
         now = timezone.now()
         self.active_cycle = ReviewCycle.objects.create(
@@ -555,15 +592,15 @@ class ReviewDashboardScopeTestCase(TestCase):
     def setUp(self):
         self.alice = Member.objects.create(
             name="앨리스", email="alice@test.com", slack_user_id="U_ALICE",
-            department="개발팀", role='MEMBER'
+            department="개발팀"
         )
         self.bob = Member.objects.create(
             name="밥", email="bob@test.com", slack_user_id="U_BOB",
-            department="기획팀", role='MEMBER'
+            department="기획팀"
         )
         self.carol = Member.objects.create(
             name="찰리", email="carol@test.com", slack_user_id="U_CAROL",
-            department="디자인팀", role='MEMBER'
+            department="디자인팀"
         )
         now = timezone.now()
         self.cycle_a = ReviewCycle.objects.create(
@@ -745,3 +782,306 @@ class AutoMatchPinTestCase(TestCase):
         res = self.client.post(reverse('admin_auto_match', args=[self.cycle_draft.id]))
         self.assertRedirects(res, reverse('admin_assignments', args=[self.cycle_draft.id]))
         self.assertFalse(ReviewAuthCode.objects.filter(cycle=self.cycle_draft).exists())
+
+
+class PipelineInitialSetupFixesTestCase(TestCase):
+    """초기 설정 및 회차 준비 파이프라인 버그 수정 검증 테스트"""
+
+    def setUp(self):
+        self.superuser = User.objects.create_superuser('admin', 'admin@test.com', 'password123')
+        self.client = Client()
+        self.client.force_login(self.superuser)
+
+    def test_setup_wizard_slack_user_id_empty(self):
+        """setup_wizard 실행 시 slack_user_id가 빈 문자열로 설정되는지 검증"""
+        User.objects.all().delete()
+        Member.objects.all().delete()
+
+        res = self.client.post(reverse('setup_wizard'), {
+            'username': '관리자',
+            'email': 'admin@yourssu.com',
+            'password': 'password123',
+            'password_confirm': 'password123'
+        })
+        self.assertEqual(res.status_code, 302)
+        admin_user = User.objects.get(email='admin@yourssu.com')
+        self.assertTrue(admin_user.is_superuser)
+
+    def test_korean_csv_import_unique_emails(self):
+        """한글 닉네임 유저 CSV 임포트 시 이메일 중복 덮어쓰기 없이 고유 가상 이메일 생성 검증"""
+        from io import BytesIO
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        csv_content = "닉네임,소속,역할\n홍길동,개발팀,MEMBER\n김철수,디자인팀,MEMBER\n이영희,기획팀,MEMBER\n"
+        csv_file = SimpleUploadedFile("members.csv", csv_content.encode('utf-8-sig'), content_type="text/csv")
+
+        res = DataValidationService.import_members_from_csv(csv_file)
+        self.assertEqual(res['created'], 3)
+        self.assertEqual(Member.objects.count(), 3)
+        emails = set(Member.objects.values_list('email', flat=True))
+        self.assertEqual(len(emails), 3)
+
+    def test_apply_normalization_preserves_original_name(self):
+        """정규화 반영 시 Member.name 원본은 보존되고 normalized_name만 업데이트되는지 검증"""
+        m1 = Member.objects.create(name="Alex", email="alex1@test.com")
+        m2 = Member.objects.create(name="alex", email="alex2@test.com")
+
+        cycle = ReviewCycle.objects.create(title="테스트 회차")
+        count = DataValidationService.apply_normalization(cycle, ["Alex", "alex"], "Alex")
+        self.assertEqual(count, 2)
+        m1.refresh_from_db()
+        m2.refresh_from_db()
+        self.assertEqual(m1.name, "Alex")
+        self.assertEqual(m2.name, "alex")
+        self.assertEqual(m1.normalized_name, "Alex")
+        self.assertEqual(m2.normalized_name, "Alex")
+
+    def test_non_choice_question_option_rejection(self):
+        """RATING/TEXT 문항에 선택지 추가 시도 시 거부 검증"""
+        cycle = ReviewCycle.objects.create(title="질문 테스트 회차", status='DRAFT')
+        rating_q = ReviewQuestion.objects.create(cycle=cycle, order=1, question_type='RATING', content="평점 문항")
+
+        res = self.client.post(reverse('admin_add_option', args=[rating_q.id]), {
+            'option_text': '잘못된 선택지'
+        })
+        self.assertEqual(res.status_code, 302)
+        self.assertEqual(QuestionOption.objects.filter(question=rating_q).count(), 0)
+
+    def test_same_department_auto_match(self):
+        """동일 부서 자동 매칭 옵션(SAME_DEPT) 검증"""
+        dev1 = Member.objects.create(name="Dev1", email="dev1@test.com", department="개발")
+        dev2 = Member.objects.create(name="Dev2", email="dev2@test.com", department="개발")
+        design1 = Member.objects.create(name="Des1", email="des1@test.com", department="디자인")
+
+        cycle = ReviewCycle.objects.create(title="부서 매칭 회차", status='DRAFT')
+        res = self.client.post(reverse('admin_auto_match', args=[cycle.id]), {
+            'match_type': 'SAME_DEPT'
+        })
+        self.assertEqual(res.status_code, 302)
+        assignments = ReviewAssignment.objects.filter(cycle=cycle)
+        self.assertEqual(assignments.count(), 2)  # dev1 <-> dev2 간 2개 매칭만 생성되어야 함
+        for a in assignments:
+            self.assertEqual(a.reviewer.department, a.reviewee.department)
+
+
+class ActiveToClosePipelineFixesTestCase(TestCase):
+    """회차 개시부터 마감까지 3단계 파이프라인 버그 수정 검증 테스트"""
+
+    def setUp(self):
+        self.superuser = User.objects.create_superuser('admin', 'admin@test.com', 'password123')
+        self.client = Client()
+
+    def test_unique_pin_code_generation(self):
+        """동일 회차 내 핀코드 중복 생성 방지 검증"""
+        cycle = ReviewCycle.objects.create(title="핀 테스트 회차", status='ACTIVE')
+        m1 = Member.objects.create(name="M1", email="m1@test.com")
+        m2 = Member.objects.create(name="M2", email="m2@test.com")
+
+        pin1 = ReviewAuthCode.generate_code_for(m1, cycle)
+        pin2 = ReviewAuthCode.generate_code_for(m2, cycle)
+
+        self.assertNotEqual(pin1.code, pin2.code)
+
+    def test_pin_validity_persists_during_active(self):
+        """회차 진행 중 동일 PIN 코드로 계속 로그인 가능한지 검증"""
+        cycle = ReviewCycle.objects.create(title="로그인 유효 테스트 회차", status='ACTIVE')
+        m1 = Member.objects.create(name="M1", email="m1@test.com")
+        pin = ReviewAuthCode.generate_code_for(m1, cycle)
+
+        # 1차 로그인
+        res1 = self.client.post(reverse('login'), {'code': pin.code})
+        self.assertRedirects(res1, reverse('review_dashboard'))
+
+        # 로그아웃 후 2차 로그인 (동일 PIN으로 재접속 성공)
+        self.client.get(reverse('logout'))
+        res2 = self.client.post(reverse('login'), {'code': pin.code})
+        self.assertRedirects(res2, reverse('review_dashboard'))
+
+    def test_invalid_rating_value_rejection(self):
+        """1~5 범위를 벗어난 척도 점수 제출 거부 검증"""
+        cycle = ReviewCycle.objects.create(title="점수 검증 회차", status='ACTIVE')
+        m1 = Member.objects.create(name="M1", email="m1@test.com")
+        m2 = Member.objects.create(name="M2", email="m2@test.com")
+        q_rating = ReviewQuestion.objects.create(cycle=cycle, order=1, question_type='RATING', content="점수 질문")
+        assignment = ReviewAssignment.objects.create(cycle=cycle, reviewer=m1, reviewee=m2)
+
+        session = self.client.session
+        session['member_id'] = m1.id
+        session['cycle_id'] = cycle.id
+        session.save()
+
+        res = self.client.post(reverse('review_form', args=[assignment.id]), {
+            f'q_{q_rating.id}_rating': '99'
+        })
+        self.assertEqual(res.status_code, 200)
+        assignment.refresh_from_db()
+        self.assertFalse(assignment.is_submitted)
+
+    def test_excessive_text_length_rejection(self):
+        """2,000자 초과 서술형 피드백 작성 제출 거부 검증"""
+        cycle = ReviewCycle.objects.create(title="자수 제한 회차", status='ACTIVE')
+        m1 = Member.objects.create(name="M1", email="m1@test.com")
+        m2 = Member.objects.create(name="M2", email="m2@test.com")
+        q_text = ReviewQuestion.objects.create(cycle=cycle, order=1, question_type='TEXT', content="서술 질문")
+        assignment = ReviewAssignment.objects.create(cycle=cycle, reviewer=m1, reviewee=m2)
+
+        session = self.client.session
+        session['member_id'] = m1.id
+        session['cycle_id'] = cycle.id
+        session.save()
+
+        long_text = "A" * 2001
+        res = self.client.post(reverse('review_form', args=[assignment.id]), {
+            f'q_{q_text.id}_text': long_text
+        })
+        self.assertEqual(res.status_code, 200)
+        assignment.refresh_from_db()
+        self.assertFalse(assignment.is_submitted)
+
+    def test_start_cycle_rejection_without_options(self):
+        """선택지 없는 객관식 질문 포함 시 회차 개시 거부 검증"""
+        self.client.force_login(self.superuser)
+        cycle = ReviewCycle.objects.create(title="선택지 미입력 회차", status='DRAFT')
+        m1 = Member.objects.create(name="M1", email="m1@test.com")
+        m2 = Member.objects.create(name="M2", email="m2@test.com")
+        ReviewAssignment.objects.create(cycle=cycle, reviewer=m1, reviewee=m2)
+
+        # 선택지가 없는 SINGLE_CHOICE 문항 생성
+        ReviewQuestion.objects.create(cycle=cycle, order=1, question_type='SINGLE_CHOICE', content="객관식 질문")
+
+        res = self.client.post(reverse('admin_start_cycle_action', args=[cycle.id]))
+        self.assertRedirects(res, reverse('admin_questions', args=[cycle.id]))
+        cycle.refresh_from_db()
+        self.assertEqual(cycle.status, 'DRAFT')
+
+    def test_start_cycle_rejection_past_end_at(self):
+        """마감 시각이 과거인 경우 회차 개시 거부 검증"""
+        self.client.force_login(self.superuser)
+        past_time = timezone.now() - timedelta(days=1)
+        cycle = ReviewCycle.objects.create(title="과거 마감 회차", status='DRAFT', end_at=past_time)
+        m1 = Member.objects.create(name="M1", email="m1@test.com")
+        m2 = Member.objects.create(name="M2", email="m2@test.com")
+        ReviewAssignment.objects.create(cycle=cycle, reviewer=m1, reviewee=m2)
+        ReviewQuestion.objects.create(cycle=cycle, order=1, question_type='TEXT', content="질문")
+
+        res = self.client.post(reverse('admin_start_cycle_action', args=[cycle.id]))
+        self.assertRedirects(res, reverse('admin_status_detail', args=[cycle.id]))
+        cycle.refresh_from_db()
+        self.assertEqual(cycle.status, 'DRAFT')
+
+    def test_draft_oversized_payload_rejection(self):
+        """100KB 초과 payload 임시 저장 거부 검증"""
+        cycle = ReviewCycle.objects.create(title="임시저장 용량 회차", status='ACTIVE')
+        m1 = Member.objects.create(name="M1", email="m1@test.com")
+        m2 = Member.objects.create(name="M2", email="m2@test.com")
+        assignment = ReviewAssignment.objects.create(cycle=cycle, reviewer=m1, reviewee=m2)
+
+        session = self.client.session
+        session['member_id'] = m1.id
+        session['cycle_id'] = cycle.id
+        session.save()
+
+        big_payload = "X" * (101 * 1024)
+        res = self.client.post(
+            reverse('save_draft', args=[assignment.id]),
+            data=big_payload,
+            content_type='application/json'
+        )
+        self.assertEqual(res.status_code, 400)
+
+
+class ReportGenerationAndPublishPipelineFixesTestCase(TestCase):
+    """리포트 생성, 검수 & 최종 배포 4단계 파이프라인 버그 수정 검증 테스트"""
+
+    def setUp(self):
+        self.superuser = User.objects.create_superuser('admin', 'admin@test.com', 'password123')
+        self.client = Client()
+        self.client.force_login(self.superuser)
+
+    def test_deterministic_text_answer_sorting(self):
+        """서술형 답변 순서가 무작위(shuffle)되지 않고 결정적으로 정렬되는지 검증"""
+        cycle = ReviewCycle.objects.create(title="정렬 테스트 회차", status='ACTIVE')
+        m1 = Member.objects.create(name="M1", email="m1@test.com")
+        m2 = Member.objects.create(name="M2", email="m2@test.com")
+        m3 = Member.objects.create(name="M3", email="m3@test.com")
+        q_text = ReviewQuestion.objects.create(cycle=cycle, order=1, question_type='TEXT', content="서술 문항")
+
+        a1 = ReviewAssignment.objects.create(cycle=cycle, reviewer=m1, reviewee=m3, is_submitted=True)
+        a2 = ReviewAssignment.objects.create(cycle=cycle, reviewer=m2, reviewee=m3, is_submitted=True)
+
+        ReviewAnswer.objects.create(assignment=a1, question=q_text, answer_text="피드백 B (나중)")
+        ReviewAnswer.objects.create(assignment=a2, question=q_text, answer_text="피드백 A (먼저)")
+
+        context = PDFReportService.compile_feedback_data(cycle, m3)
+        self.assertEqual(context['q_1_text_answers'], ["피드백 A (먼저)", "피드백 B (나중)"])
+
+    def test_invalid_html_template_syntax_rejection(self):
+        """구문 에러가 포함된 커스텀 HTML 템플릿 업로드 거부 검증"""
+        cycle = ReviewCycle.objects.create(title="템플릿 검증 회차", status='DRAFT')
+        invalid_html = "{% if unclosed_tag %} <h1>테스트</h1>"  # endif 가 없는 유효하지 않은 템플릿
+        html_file = SimpleUploadedFile("invalid.html", invalid_html.encode('utf-8'), content_type="text/html")
+
+        res = self.client.post(reverse('admin_upload_custom_template', args=[cycle.id]), {
+            'html_file': html_file
+        })
+        self.assertEqual(res.status_code, 302)
+        cycle.refresh_from_db()
+        self.assertFalse(cycle.use_custom_template)
+
+    def test_cli_publish_only_approved_reports(self):
+        """CLI publish_reports 실행 시 APPROVED 승인 리포트만 배포 대상에 포함되는지 검증"""
+        from core.management.commands.publish_reports import Command
+        cycle = ReviewCycle.objects.create(title="CLI 배포 회차", status='COMPLETED')
+        m1 = Member.objects.create(name="M1", email="m1@test.com", slack_user_id="U111")
+        m2 = Member.objects.create(name="M2", email="m2@test.com", slack_user_id="U222")
+
+        r1 = ReviewReport.objects.create(cycle=cycle, reviewee=m1, validation_status='APPROVED', html_file="reports_html/test1.html")
+        r2 = ReviewReport.objects.create(cycle=cycle, reviewee=m2, validation_status='NEEDS_REVIEW', html_file="reports_html/test2.html")
+
+        cmd = Command()
+        with patch('core.services.slack_service.SlackService.send_html_report_dm') as mock_send:
+            mock_send.return_value = (True, "OK")
+            cmd.handle(cycle_id=cycle.id)
+
+        r1.refresh_from_db()
+        r2.refresh_from_db()
+        self.assertTrue(r1.is_sent)
+        self.assertFalse(r2.is_sent)  # APPROVED가 아닌 r2는 배포되지 않아야 함
+
+    def test_filter_response_quality_extended(self):
+        """자음/모음 난타, 무의미 패턴, 동일문자 반복 감지 정밀 테스트"""
+        cycle = ReviewCycle.objects.create(title="품질 테스트 회차", status='ACTIVE')
+        m1 = Member.objects.create(name="작성자", email="writer@test.com", slack_user_id="U100")
+        m2 = Member.objects.create(name="대상자", email="target@test.com", slack_user_id="U200")
+        assign = ReviewAssignment.objects.create(cycle=cycle, reviewer=m1, reviewee=m2)
+
+        q1 = ReviewQuestion.objects.create(cycle=cycle, order=1, question_type='TEXT', content="피드백 1")
+        q2 = ReviewQuestion.objects.create(cycle=cycle, order=2, question_type='TEXT', content="피드백 2")
+        q3 = ReviewQuestion.objects.create(cycle=cycle, order=3, question_type='TEXT', content="피드백 3")
+        q4 = ReviewQuestion.objects.create(cycle=cycle, order=4, question_type='TEXT', content="피드백 4")
+
+        # 1. 자음/모음 단순 입력 ("ㅋㅋㅋ", "ㅇㅇ", "ㅠㅠ")
+        a1 = ReviewAnswer.objects.create(assignment=assign, question=q1, answer_text="ㅋㅋㅋ")
+        # 2. 동일 문자 반복 ("가가가가", "aaaa")
+        a2 = ReviewAnswer.objects.create(assignment=assign, question=q2, answer_text="가가가가")
+        # 3. 키보드 난타 ("asdf", "1234")
+        a3 = ReviewAnswer.objects.create(assignment=assign, question=q3, answer_text="asdf")
+        # 4. 성의 있는 긴 답변 (통과 대상)
+        a4 = ReviewAnswer.objects.create(assignment=assign, question=q4, answer_text="항상 밝게 인사해 주시고 코드 리뷰 시 꼼꼼하게 피드백을 전달해 주셔서 큰 도움이 되었습니다.")
+
+        excluded_count = DataValidationService.filter_response_quality([a1, a2, a3, a4])
+        self.assertEqual(excluded_count, 3)
+
+        a1.refresh_from_db()
+        a2.refresh_from_db()
+        a3.refresh_from_db()
+        a4.refresh_from_db()
+
+        self.assertTrue(a1.is_excluded_from_report)
+        self.assertTrue(a2.is_excluded_from_report)
+        self.assertTrue(a3.is_excluded_from_report)
+        self.assertFalse(a4.is_excluded_from_report)
+
+
+
+

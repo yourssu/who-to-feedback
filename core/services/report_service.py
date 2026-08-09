@@ -33,7 +33,7 @@ from django.template.loader import render_to_string
 from core.models import Member, ReviewReport, ReviewAnswer, ReviewAssignment
 
 
-class PDFReportService:
+class HTMLReportService:
     TEXT_SCORE_MAP = {
         "매우 아님": 1.0, "매우아님": 1.0, "1점": 1.0, "1": 1.0,
         "약간 아님": 2.0, "약간아님": 2.0, "2점": 2.0, "2": 2.0,
@@ -49,16 +49,19 @@ class PDFReportService:
             return float(answer.rating_value)
 
         text_val = (answer.answer_text or "").strip()
-        if text_val in PDFReportService.TEXT_SCORE_MAP:
-            return PDFReportService.TEXT_SCORE_MAP[text_val]
+        if text_val in HTMLReportService.TEXT_SCORE_MAP:
+            return HTMLReportService.TEXT_SCORE_MAP[text_val]
 
         return None
 
     @staticmethod
     def generate_radar_chart_base64(labels, values):
-        """방사형(Radar) 차트 Base64 이미지 자동 생성"""
-        if not HAS_MATPLOTLIB or not labels or len(labels) < 3:
+        """방사형(Radar) 차트 Base64 이미지 자동 생성 (카테고리 3개 미만 시 막대 차트로 fallback)"""
+        if not HAS_MATPLOTLIB or not labels:
             return ""
+        if len(labels) < 3:
+            return HTMLReportService.generate_bar_chart_base64(labels, values)
+        fig = None
         try:
             num_vars = len(labels)
             angles = np.linspace(0, 2 * np.pi, num_vars, endpoint=False).tolist()
@@ -75,17 +78,20 @@ class PDFReportService:
 
             buf = io.BytesIO()
             plt.savefig(buf, format='png', bbox_inches='tight', transparent=True)
-            plt.close(fig)
             buf.seek(0)
             return f"data:image/png;base64,{base64.b64encode(buf.read()).decode('utf-8')}"
         except Exception:
             return ""
+        finally:
+            if fig is not None:
+                plt.close(fig)
 
     @staticmethod
     def generate_pie_chart_base64(labels, values):
         """원그래프(Pie/Donut Chart) Base64 이미지 자동 생성"""
         if not HAS_MATPLOTLIB or not labels or not values or sum(values) == 0:
             return ""
+        fig = None
         try:
             fig, ax = plt.subplots(figsize=(4.5, 4.5))
             colors = ['#2B2D6E', '#8B7CE8', '#FFD14D', '#4F46E5', '#10B981', '#F59E0B']
@@ -99,17 +105,20 @@ class PDFReportService:
 
             buf = io.BytesIO()
             plt.savefig(buf, format='png', bbox_inches='tight', transparent=True)
-            plt.close(fig)
             buf.seek(0)
             return f"data:image/png;base64,{base64.b64encode(buf.read()).decode('utf-8')}"
         except Exception:
             return ""
+        finally:
+            if fig is not None:
+                plt.close(fig)
 
     @staticmethod
     def generate_bar_chart_base64(labels, values):
         """막대그래프(Bar Chart) Base64 이미지 자동 생성"""
         if not HAS_MATPLOTLIB or not labels or not values:
             return ""
+        fig = None
         try:
             fig, ax = plt.subplots(figsize=(5.5, 3.5))
             bars = ax.bar(labels, values, color='#8B7CE8', width=0.5, edgecolor='#2B2D6E', linewidth=1.2)
@@ -129,11 +138,13 @@ class PDFReportService:
 
             buf = io.BytesIO()
             plt.savefig(buf, format='png', bbox_inches='tight', transparent=True)
-            plt.close(fig)
             buf.seek(0)
             return f"data:image/png;base64,{base64.b64encode(buf.read()).decode('utf-8')}"
         except Exception:
             return ""
+        finally:
+            if fig is not None:
+                plt.close(fig)
 
     @staticmethod
     def generate_options_pie_chart_base64(options_summary):
@@ -144,6 +155,7 @@ class PDFReportService:
         counts = [opt['count'] for opt in options_summary if opt['count'] > 0]
         if not labels or sum(counts) == 0:
             return ""
+        fig = None
         try:
             fig, ax = plt.subplots(figsize=(4.5, 4.5))
             colors = ['#4F46E5', '#8B7CE8', '#10B981', '#F59E0B', '#EF4444', '#6366F1', '#EC4899']
@@ -157,11 +169,13 @@ class PDFReportService:
 
             buf = io.BytesIO()
             plt.savefig(buf, format='png', bbox_inches='tight', transparent=True)
-            plt.close(fig)
             buf.seek(0)
             return f"data:image/png;base64,{base64.b64encode(buf.read()).decode('utf-8')}"
         except Exception:
             return ""
+        finally:
+            if fig is not None:
+                plt.close(fig)
 
     @staticmethod
     def generate_options_bar_chart_base64(options_summary):
@@ -173,6 +187,7 @@ class PDFReportService:
         pcts = [opt['percentage'] for opt in options_summary]
         if not labels:
             return ""
+        fig = None
         try:
             fig, ax = plt.subplots(figsize=(5.5, 3.5))
             bars = ax.bar(labels, pcts, color='#4F46E5', width=0.5, edgecolor='#2B2D6E', linewidth=1.2)
@@ -194,11 +209,13 @@ class PDFReportService:
 
             buf = io.BytesIO()
             plt.savefig(buf, format='png', bbox_inches='tight', transparent=True)
-            plt.close(fig)
             buf.seek(0)
             return f"data:image/png;base64,{base64.b64encode(buf.read()).decode('utf-8')}"
         except Exception:
             return ""
+        finally:
+            if fig is not None:
+                plt.close(fig)
 
     @staticmethod
     def compile_feedback_data(cycle, reviewee):
@@ -260,7 +277,7 @@ class PDFReportService:
             if q.question_type == 'RATING':
                 scores = []
                 for a in answers:
-                    sc = PDFReportService.extract_score_from_answer(a)
+                    sc = HTMLReportService.extract_score_from_answer(a)
                     if sc is not None:
                         scores.append(sc)
 
@@ -286,7 +303,7 @@ class PDFReportService:
 
             elif q.question_type == 'TEXT':
                 text_list = [a.answer_text.strip() for a in answers if a.answer_text and a.answer_text.strip()]
-                random.shuffle(text_list)
+                text_list.sort()
                 for k in set(keys):
                     context[f'{k}text_answers'] = text_list
                 q_data['text_answers'] = text_list
@@ -306,8 +323,8 @@ class PDFReportService:
                 q_data['options_summary'] = options_summary
 
                 # 선택형 문항 전용 원/막대 그래프 Base64 이미지 주입
-                pie_b64 = PDFReportService.generate_options_pie_chart_base64(options_summary)
-                bar_b64 = PDFReportService.generate_options_bar_chart_base64(options_summary)
+                pie_b64 = HTMLReportService.generate_options_pie_chart_base64(options_summary)
+                bar_b64 = HTMLReportService.generate_options_bar_chart_base64(options_summary)
 
                 for k in set(keys):
                     context[f'{k}pie_chart_base64'] = pie_b64
@@ -350,18 +367,18 @@ class PDFReportService:
         context['radar_points'] = " ".join(radar_pts)
 
         # 3. 전체 카테고리 기반 Base64 차트 이미지 주입
-        context['radar_chart_base64'] = PDFReportService.generate_radar_chart_base64(cat_names, cat_scores)
-        context['pie_chart_base64'] = PDFReportService.generate_pie_chart_base64(cat_names, cat_scores)
-        context['bar_chart_base64'] = PDFReportService.generate_bar_chart_base64(cat_names, cat_scores)
+        context['radar_chart_base64'] = HTMLReportService.generate_radar_chart_base64(cat_names, cat_scores)
+        context['pie_chart_base64'] = HTMLReportService.generate_pie_chart_base64(cat_names, cat_scores)
+        context['bar_chart_base64'] = HTMLReportService.generate_bar_chart_base64(cat_names, cat_scores)
 
         return context
 
     @staticmethod
-    def generate_pdf_report(cycle, reviewee):
-        """프론트엔드 호환성을 유지하는 경량 HTML 리포트 생성"""
+    def generate_html_report(cycle, reviewee):
+        """HTML 결과 리포트 생성"""
         report, _ = ReviewReport.objects.get_or_create(cycle=cycle, reviewee=reviewee)
         try:
-            context = PDFReportService.compile_feedback_data(cycle, reviewee)
+            context = HTMLReportService.compile_feedback_data(cycle, reviewee)
 
             if cycle.use_custom_template and cycle.custom_html_file and os.path.exists(cycle.custom_html_file.path):
                 with open(cycle.custom_html_file.path, 'r', encoding='utf-8') as f:
@@ -371,7 +388,7 @@ class PDFReportService:
             else:
                 html_content = render_to_string('reports/peer_review_report.html', context)
 
-            output_dir = os.path.join(settings.MEDIA_ROOT, 'reports_pdf')
+            output_dir = os.path.join(settings.MEDIA_ROOT, 'reports_html')
             os.makedirs(output_dir, exist_ok=True)
             filename = f"peer_review_{cycle.id}_{reviewee.id}.html"
             full_path = os.path.join(output_dir, filename)
@@ -379,7 +396,7 @@ class PDFReportService:
             with open(full_path, 'w', encoding='utf-8') as f:
                 f.write(html_content)
 
-            report.pdf_file.name = f"reports_pdf/{filename}"
+            report.html_file.name = f"reports_html/{filename}"
             report.validation_status = 'APPROVED'
             report.error_log = ""
             report.save()
@@ -392,37 +409,26 @@ class PDFReportService:
             return report
 
     @staticmethod
-    def generate_all_pdf_reports(cycle):
-        """회차 내 모든 피드백 수신 대상자에 대한 PDF 일괄 생성"""
+    def generate_all_html_reports(cycle):
+        """회차 내 모든 피드백 수신 대상자에 대한 HTML 리포트 일괄 생성"""
         reviewees = Member.objects.filter(received_reviews__cycle=cycle).distinct()
         reports = []
         for reviewee in reviewees:
-            rep = PDFReportService.generate_pdf_report(cycle, reviewee)
+            rep = HTMLReportService.generate_html_report(cycle, reviewee)
             reports.append(rep)
         return reports
 
     @staticmethod
     def generate_all_reports_for_cycle(cycle):
-        """회차 내 모든 피드백 수신 대상자에 대한 PDF 일괄 생성 (호환용)"""
-        return PDFReportService.generate_all_pdf_reports(cycle)
+        """호환용 메소드"""
+        return HTMLReportService.generate_all_html_reports(cycle)
+
+    generate_pdf_report = generate_html_report
+    generate_all_pdf_reports = generate_all_html_reports
 
 
-class PPTReportService:
-    @staticmethod
-    def generate_ppt_report(cycle, reviewee):
-        """프론트엔드 PPT 다운로드 버튼 호환을 위한 경량 리포트 매핑"""
-        report, _ = ReviewReport.objects.get_or_create(cycle=cycle, reviewee=reviewee)
-        try:
-            pdf_rep = PDFReportService.generate_pdf_report(cycle, reviewee)
-            report.ppt_file.name = pdf_rep.pdf_file.name
-            report.validation_status = 'APPROVED'
-            report.save()
-            return report
-        except Exception as e:
-            report.validation_status = 'FAILED'
-            report.error_log = str(e)
-            report.save()
-            return report
+# 하위 호환용 레거시 별칭
+PDFReportService = HTMLReportService
 
 
 class ReportManagementService:
@@ -434,9 +440,8 @@ class ReportManagementService:
 
         reports = []
         for rev in reviewees:
-            pdf_rep = PDFReportService.generate_pdf_report(cycle, rev)
-            ppt_rep = PPTReportService.generate_ppt_report(cycle, rev)
-            reports.append(pdf_rep)
+            html_rep = HTMLReportService.generate_html_report(cycle, rev)
+            reports.append(html_rep)
 
         return reports
 
@@ -449,15 +454,15 @@ class ReportManagementService:
         for m in reviewees:
             report = ReviewReport.objects.filter(cycle=cycle, reviewee=m).first()
 
-            has_slack_id = bool(m.slack_user_id and (m.slack_user_id.startswith('U') or m.slack_user_id.startswith('W') or m.slack_user_id.startswith('D')))
-            has_pdf = bool(report and report.pdf_file and report.pdf_file.name)
+            has_slack_id = bool((m.slack_user_id and (m.slack_user_id.startswith('U') or m.slack_user_id.startswith('W') or m.slack_user_id.startswith('D'))) or (m.email and '@' in m.email))
+            has_html = bool(report and report.html_file and report.html_file.name)
             is_approved = bool(report and report.validation_status == 'APPROVED')
-            is_ready = has_slack_id and has_pdf and is_approved
+            is_ready = has_slack_id and has_html and is_approved
 
             issues = []
             if not has_slack_id:
-                issues.append("Slack User ID 누락")
-            if not has_pdf:
+                issues.append("Slack 계정 정보 누락")
+            if not has_html:
                 issues.append("결과 리포트 미생성")
             if not is_approved:
                 issues.append("관리자 승인 미완료")
@@ -467,7 +472,8 @@ class ReportManagementService:
                 'department': m.department or '부서 미지정',
                 'slack_user_id': m.slack_user_id,
                 'has_slack_id': has_slack_id,
-                'has_pdf': has_pdf,
+                'has_html': has_html,
+                'has_pdf': has_html,  # Template 호환
                 'is_approved': is_approved,
                 'is_ready': is_ready,
                 'issues_summary': ", ".join(issues) if issues else "발송 준비 완료",

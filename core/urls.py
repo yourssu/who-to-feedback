@@ -30,12 +30,14 @@ urlpatterns = [
     path('admin-panel/validation/', admin_views.admin_validation, name='admin_validation'),
     path('admin-panel/cycles/<int:cycle_id>/validation/', admin_views.admin_validation, name='admin_validation_detail'),
     path('admin-panel/validation/normalize/', admin_views.admin_apply_normalization, name='admin_apply_normalization'),
+    path('admin-panel/validation/answers/<int:answer_id>/toggle-exclusion/', admin_views.admin_toggle_answer_exclusion, name='admin_toggle_answer_exclusion'),
 
     # PAGE 3: 질문지 제작 (ACTIVE 시작 후 잠금)
     path('admin-panel/cycles/<int:cycle_id>/questions/', admin_views.admin_questions, name='admin_questions'),
     path('admin-panel/cycles/<int:cycle_id>/questions/add/', admin_views.admin_add_question, name='admin_add_question'),
     path('admin-panel/questions/<int:question_id>/delete/', admin_views.admin_delete_question, name='admin_delete_question'),
     path('admin-panel/questions/<int:question_id>/options/add/', admin_views.admin_add_option, name='admin_add_option'),
+    path('admin-panel/options/<int:option_id>/delete/', admin_views.admin_delete_option, name='admin_delete_option'),
 
     # PAGE 4: 피어리뷰 매칭
     path('admin-panel/cycles/<int:cycle_id>/assignments/', admin_views.admin_assignments, name='admin_assignments'),

@@ -11,10 +11,11 @@ class LayoutCheckService:
 
         issues = []
 
-        # 1. 서술형 300자/500자 이상 긴 글 overflow 검사
+        # 1. 서술형 300자 이상 긴 글 및 줄바꿈(10개 이상) overflow 검사
         for ans in answers:
-            if ans.answer_text and len(ans.answer_text) >= 300:
-                issues.append(f"Q{ans.question.order} 서술형 답변이 {len(ans.answer_text)}자로 길어 카드 밖 overflow 주의 필요.")
+            if ans.answer_text:
+                if len(ans.answer_text) >= 300 or ans.answer_text.count('\n') >= 10:
+                    issues.append(f"Q{ans.question.order} 서술형 답변(길이: {len(ans.answer_text)}자, 줄바꿈: {ans.answer_text.count('\n')}개) 카드 밖 overflow 주의 필요.")
 
         # 2. 키워드 선택 태그 8개 이상 넘침 검사
         multi_answers = answers.filter(question__question_type='MULTIPLE_CHOICE')

@@ -9,6 +9,7 @@
 <div class="validation-summary">
   <article class="card"><span class="metric-label">필수값 오류</span><strong class="metric-value">{{ logs|length }}<small>건</small></strong><p class="card-subtitle">업로드 원본에서 확인이 필요한 항목</p></article>
   <article class="card"><span class="metric-label">이름 정규화</span><strong class="metric-value">{{ suggestions|length }}<small>그룹</small></strong><p class="card-subtitle">유사도가 높아 병합을 검토할 이름</p></article>
+  <article class="card"><span class="metric-label">품질 필터 제외</span><strong class="metric-value">{{ excluded_answers|length }}<small>건</small></strong><p class="card-subtitle">응답 품질 미달로 제외된 답변</p></article>
 </div>
 <div class="validation-grid">
   <section class="card">
@@ -20,6 +21,34 @@
     <div class="normalization-list">{% for sug in suggestions %}<article class="normalization-item"><div><strong>{{ sug.raw_names|join:', ' }}</strong><span>유사도 {{ sug.similarity }}% · 제안 이름 {{ sug.suggested_name }}</span></div><form method="post" action="{% url 'admin_apply_normalization' %}">{% csrf_token %}<input type="hidden" name="cycle_id" value="{{ cycle.id }}">{% for r in sug.raw_names %}<input type="hidden" name="raw_names" value="{{ r }}">{% endfor %}<input type="hidden" name="target_name" value="{{ sug.suggested_name }}"><button type="submit" class="btn btn-tonal btn-small">{{ sug.suggested_name }}(으)로 병합</button></form></article>{% empty %}<div class="empty-state compact-empty">유사도가 높은 미정규화 이름 그룹이 없습니다.</div>{% endfor %}</div>
   </section>
 </div>
+<section class="card content-section" style="margin-top:24px;">
+  <div class="section-head"><div><h2 class="card-title">응답 품질 필터 제외 답변 관리</h2><p class="card-subtitle">자동 탐지되어 결과지 리포트에서 제외된 답변입니다. 필요시 복원할 수 있습니다.</p></div></div>
+  <div class="table-scroll compact-table">
+    <table class="table-custom">
+      <thead>
+        <tr><th>문항</th><th>작성자 ➡️ 피평가자</th><th>답변 내용</th><th>제외 사유</th><th>관리</th></tr>
+      </thead>
+      <tbody>
+        {% for ans in excluded_answers %}
+        <tr>
+          <td>Q{{ ans.question.order }}</td>
+          <td>{{ ans.assignment.reviewer.name }} ➡️ {{ ans.assignment.reviewee.name }}</td>
+          <td><code>{{ ans.answer_text|truncatechars:40 }}</code></td>
+          <td><span class="badge badge-warning">{{ ans.exclusion_reason|default:'응답 품질 미달' }}</span></td>
+          <td>
+            <form method="post" action="{% url 'admin_toggle_answer_exclusion' answer_id=ans.id %}">
+              {% csrf_token %}
+              <button class="btn btn-tonal btn-small" type="submit">리포트에 복원</button>
+            </form>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5"><div class="table-empty-success">품질 필터로 제외된 답변이 없습니다.</div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
 {% else %}
 <section class="card empty-state"><h2 class="card-title">검증할 회차가 없습니다</h2><p class="card-subtitle">회차를 만든 뒤 팀원·매칭 데이터를 업로드해 주세요.</p><a class="btn btn-primary empty-action" href="{% url 'admin_dashboard' %}">Overview로 이동</a></section>
 {% endif %}

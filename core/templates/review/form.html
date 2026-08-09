@@ -44,8 +44,8 @@
     {% elif item.question.question_type == 'TEXT' %}
     <p class="r-help">상황과 행동을 중심으로 작성하면 동료에게 더 도움이 됩니다.</p>
     <label class="card-title" for="q-{{ item.question.id }}">익명 피드백</label>
-    <textarea class="form-control" id="q-{{ item.question.id }}" name="q_{{ item.question.id }}_text" rows="6" maxlength="500" data-count="#count-{{ item.question.id }}" placeholder="함께 일하며 좋았던 점과 다음에 시도해 볼 점을 작성해 주세요." data-mobile-placeholder="함께 일하며 좋았던 점과 다음에 시도해 볼 점을 작성해 주세요." data-desktop-placeholder="함께 일하며 좋았던 점과 다음에 시도해 볼 점을 작성해 주세요." required>{{ item.draft_text }}</textarea>
-    <div class="text-counter"><span id="count-{{ item.question.id }}">0</span> / 500</div>
+    <textarea class="form-control" id="q-{{ item.question.id }}" name="q_{{ item.question.id }}_text" rows="6" maxlength="2000" data-count="#count-{{ item.question.id }}" placeholder="함께 일하며 좋았던 점과 다음에 시도해 볼 점을 작성해 주세요." data-mobile-placeholder="함께 일하며 좋았던 점과 다음에 시도해 볼 점을 작성해 주세요." data-desktop-placeholder="함께 일하며 좋았던 점과 다음에 시도해 볼 점을 작성해 주세요." required>{{ item.draft_text }}</textarea>
+    <div class="text-counter"><span id="count-{{ item.question.id }}">0</span> / 2000</div>
     <div class="banner question-banner"><span class="mobile-only">피드백은 익명으로 종합 리포트에 반영됩니다.</span><span class="desktop-only">응답은 익명으로 집계되어 솔직한 피드백을 남길 수 있어요.</span></div>
     {% elif item.question.question_type == 'SINGLE_CHOICE' %}
     <p class="r-help">하나만 선택할 수 있어요.</p>

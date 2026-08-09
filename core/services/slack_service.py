@@ -18,6 +18,7 @@ class SlackService:
     def __init__(self):
         self.bot_token = settings.SLACK_BOT_TOKEN
         self.mock_mode = settings.MOCK_SLACK_MODE
+        self._users_list_cache = None
 
         if not self.bot_token or self.bot_token == "xoxb-your-slack-bot-token-here":
             self.mock_mode = True
@@ -60,32 +61,37 @@ class SlackService:
             except Exception as e:
                 logger.warning(f"Slack lookupByEmail failed for {member.email}: {e}")
 
-        # 2. lookupByEmail 실패 시 (missing_scope 등), users:read 스코프 기반 users.list 전체 스캔 매칭 (이메일 & 유저네임)
+        # 2. lookupByEmail 실패 시 (missing_scope 등), users:read 스코프 기반 users.list 캐시 스캔 매칭 (이메일 & 유저네임)
         if not real_id:
             raw_username = target_id.lstrip('@').lower()
             member_name_clean = member.name.strip().lower()
             member_email_clean = (member.email or "").strip().lower()
 
             try:
-                users_res = self.client.users_list()
-                if users_res.get('ok') and 'members' in users_res:
-                    for u in users_res['members']:
-                        if u.get('deleted') or u.get('is_bot'):
-                            continue
-                        u_email = u.get('profile', {}).get('email', '').lower()
-                        u_name = u.get('name', '').lower()
-                        u_disp = u.get('profile', {}).get('display_name', '').lower()
-                        u_real = u.get('profile', {}).get('real_name', '').lower()
+                if self._users_list_cache is None:
+                    users_res = self.client.users_list()
+                    if users_res.get('ok') and 'members' in users_res:
+                        self._users_list_cache = users_res.get('members', [])
+                    else:
+                        self._users_list_cache = []
 
-                        match_candidates = [u_name, u_disp, u_real]
+                for u in self._users_list_cache:
+                    if u.get('deleted') or u.get('is_bot'):
+                        continue
+                    u_email = u.get('profile', {}).get('email', '').lower()
+                    u_name = u.get('name', '').lower()
+                    u_disp = u.get('profile', {}).get('display_name', '').lower()
+                    u_real = u.get('profile', {}).get('real_name', '').lower()
 
-                        # 1순위: 이메일 매칭, 2순위: 닉네임/유저네임/이름 매칭
-                        if member_email_clean and u_email == member_email_clean:
-                            real_id = u['id']
-                            break
-                        if (raw_username and raw_username in match_candidates) or (member_name_clean and member_name_clean in match_candidates):
-                            real_id = u['id']
-                            break
+                    match_candidates = [u_name, u_disp, u_real]
+
+                    # 1순위: 이메일 매칭, 2순위: 닉네임/유저네임/이름 매칭
+                    if member_email_clean and u_email == member_email_clean:
+                        real_id = u['id']
+                        break
+                    if (raw_username and raw_username in match_candidates) or (member_name_clean and member_name_clean in match_candidates):
+                        real_id = u['id']
+                        break
             except Exception as e:
                 logger.warning(f"Slack users_list scan match failed for target '{target_id}': {e}")
 
@@ -220,19 +226,19 @@ class SlackService:
             self.log_delivery(member, 'CUSTOM_MSG', text, False, err, cycle)
             return False, err
 
-    def send_pdf_report_dm(self, member, pdf_file_path, cycle_title, cycle=None):
-        """피어리뷰 결과 리포트 파일 업로드 및 Slack DM 발송"""
-        ext = os.path.splitext(pdf_file_path)[1] if pdf_file_path else ".html"
+    def send_html_report_dm(self, member, html_file_path, cycle_title, cycle=None):
+        """피어리뷰 HTML 결과 리포트 파일 업로드 및 Slack DM 발송"""
+        ext = os.path.splitext(html_file_path)[1] if html_file_path else ".html"
         comment_text = (
             f"🎉 **[{cycle_title}] 피어리뷰 결과 리포트 도착**\n"
             f"안녕하세요 {member.name}님!\n"
-            f"이번 피어리뷰 세션이 마감되어 동료들의 피드백 결과를 정리한 결과 리포트 파일이 전달되었습니다.\n"
+            f"이번 피어리뷰 세션이 마감되어 동료들의 피드백 결과를 정리한 HTML 결과 리포트 파일이 전달되었습니다.\n"
             f"첨부된 리포트 파일을 확인해 주세요!"
         )
 
         if self.mock_mode:
             print(f"\n================ [MOCK SLACK REPORT DM] ================")
-            print(f"To: {member.name} ({member.slack_user_id})\nFile Path: {pdf_file_path}")
+            print(f"To: {member.name} ({member.slack_user_id})\nFile Path: {html_file_path}")
             print(f"===========================================================\n")
             self.log_delivery(member, 'REPORT', comment_text, True, "Mock Report Sent", cycle)
             return True, "Mock Report DM sent"
@@ -242,7 +248,7 @@ class SlackService:
         try:
             response = self.client.files_upload_v2(
                 channel=target_channel,
-                file=pdf_file_path,
+                file=html_file_path,
                 title=f"{cycle_title} 피어리뷰 리포트_{member.name}{ext}",
                 initial_comment=comment_text
             )
@@ -252,6 +258,8 @@ class SlackService:
             err = e.response['error']
             self.log_delivery(member, 'REPORT', comment_text, False, err, cycle)
             return False, err
+
+    send_pdf_report_dm = send_html_report_dm
 
     def send_test_dm(self, admin_member, sample_pdf_path=None):
         """전체 발송 전 관리자 본인에게 보내는 사전 테스트 DM"""

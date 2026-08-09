@@ -5,16 +5,10 @@ from django.utils import timezone
 
 
 class Member(models.Model):
-    ROLE_CHOICES = [
-        ('ADMIN', '관리자'),
-        ('MEMBER', '일반 사용자'),
-    ]
-
     name = models.CharField(max_length=50, verbose_name="이름")
     email = models.EmailField(unique=True, verbose_name="이메일")
     slack_user_id = models.CharField(max_length=50, verbose_name="Slack User ID")
     department = models.CharField(max_length=100, blank=True, null=True, verbose_name="소속 부서")
-    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='MEMBER', verbose_name="권한 역할")
     normalized_name = models.CharField(max_length=50, blank=True, verbose_name="정규화된 이름")
     created_at = models.DateTimeField(default=timezone.now, verbose_name="생성일시")
 
@@ -154,7 +148,7 @@ class QuestionOption(models.Model):
 class ReviewAuthCode(models.Model):
     member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='auth_codes', verbose_name="팀원")
     cycle = models.ForeignKey(ReviewCycle, on_delete=models.CASCADE, related_name='auth_codes', verbose_name="리뷰 회차")
-    code = models.CharField(max_length=6, verbose_name="6자리 PIN 코드")
+    code = models.CharField(max_length=6, db_index=True, verbose_name="6자리 PIN 코드")
     created_at = models.DateTimeField(default=timezone.now, verbose_name="생성일시")
     is_used = models.BooleanField(default=False, verbose_name="사용 여부")
 
@@ -164,10 +158,20 @@ class ReviewAuthCode(models.Model):
 
     @classmethod
     def generate_code_for(cls, member, cycle):
-        code = f"{random.randint(100000, 999999)}"
-        auth_code, _ = cls.objects.get_or_create(member=member, cycle=cycle, is_used=False)
-        auth_code.code = code
-        auth_code.save()
+        # 동일 회차 내 다른 사용자와 중복되지 않는 고유한 6자리 핀코드 생성
+        while True:
+            code = f"{random.randint(100000, 999999)}"
+            if not cls.objects.filter(cycle=cycle, code=code).exclude(member=member).exists():
+                break
+
+        # 기존 발급 코드가 있으면 갱신, 없으면 새로 생성
+        auth_code = cls.objects.filter(member=member, cycle=cycle).first()
+        if auth_code:
+            auth_code.code = code
+            auth_code.created_at = timezone.now()
+            auth_code.save(update_fields=['code', 'created_at'])
+        else:
+            auth_code = cls.objects.create(member=member, cycle=cycle, code=code, is_used=False)
         return auth_code
 
 
@@ -216,8 +220,7 @@ class ReviewReport(models.Model):
 
     cycle = models.ForeignKey(ReviewCycle, on_delete=models.CASCADE, related_name='reports', verbose_name="리뷰 회차")
     reviewee = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='reports', verbose_name="리뷰 대상자")
-    pdf_file = models.FileField(upload_to='reports_pdf/', null=True, blank=True, verbose_name="PDF 리포트 파일")
-    ppt_file = models.FileField(upload_to='reports_ppt/', null=True, blank=True, verbose_name="PPT 리포트 파일")
+    html_file = models.FileField(upload_to='reports_html/', null=True, blank=True, verbose_name="HTML 리포트 파일")
     version = models.CharField(max_length=10, default="v1", verbose_name="리포트 템플릿 버전")
     validation_status = models.CharField(max_length=20, choices=VALIDATION_STATUS_CHOICES, default='NEEDS_REVIEW', verbose_name="검수 상태")
     admin_memo = models.TextField(blank=True, verbose_name="관리자 수정 메모/코멘트")
@@ -227,6 +230,14 @@ class ReviewReport(models.Model):
     created_at = models.DateTimeField(default=timezone.now, verbose_name="생성일시")
     is_sent = models.BooleanField(default=False, verbose_name="Slack DM 발송 여부")
     sent_at = models.DateTimeField(null=True, blank=True, verbose_name="발송일시")
+
+    @property
+    def pdf_file(self):
+        return self.html_file
+
+    @property
+    def ppt_file(self):
+        return None
 
     class Meta:
         verbose_name = "결과 리포트"
@@ -254,7 +265,7 @@ class SlackDeliveryLog(models.Model):
     DELIVERY_TYPE_CHOICES = [
         ('AUTH_CODE', '인증 핀코드 DM'),
         ('REMINDER', '미작성자 독촉 DM'),
-        ('REPORT', 'PDF 결과 리포트 DM'),
+        ('REPORT', 'HTML 결과 리포트 DM'),
         ('CUSTOM_MSG', '커스텀 알림 DM'),
         ('TEST_DM', '테스트 DM'),
     ]
