@@ -1,4 +1,5 @@
 from django.core.management.base import BaseCommand, CommandError
+
 from core.models import ReviewCycle, Member, ReviewAuthCode
 from core.services.slack_service import SlackService
 

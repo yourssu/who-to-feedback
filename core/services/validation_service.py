@@ -1,7 +1,7 @@
-import re
-import openpyxl
 import difflib
-from core.models import Member, ReviewAssignment, ReviewAnswer, DataValidationLog
+import re
+
+from core.models import Member
 
 
 class DataValidationService:

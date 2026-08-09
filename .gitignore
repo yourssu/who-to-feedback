@@ -56,7 +56,8 @@ env.bak/
 venv.bak/
 
 # Django stuff:
-*.log
+# Django log files (uncomment if needed)
+# *.log
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
@@ -87,6 +88,14 @@ ipython_config.py
 # pyenv
 .python-version
 
+# Pycharm
+.idea/
+
+# Agent
+.codex/
+.gemini/
+.claude/
+
 # macOS
 .DS_Store
 .AppleDouble
@@ -95,4 +104,3 @@ ipython_config.py
 # Environment variables
 .env
 .env.local
-yourssu_peer_review_html_pdf_generator/runtime/chromium/chrome-headless-shell-win64/chrome-headless-shell.exe

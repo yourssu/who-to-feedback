@@ -1,6 +1,4 @@
 from django.contrib import admin
-from django.shortcuts import redirect
-from django.utils import timezone
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 
@@ -8,9 +6,8 @@ from core.models import (
     Member, ReviewCycle, ReviewQuestion, QuestionOption,
     ReviewAuthCode, ReviewAssignment, ReviewAnswer, ReviewReport
 )
-from core.services.slack_service import SlackService
 from core.services.report_service import PDFReportService
-
+from core.services.slack_service import SlackService
 
 
 @admin.register(Member)

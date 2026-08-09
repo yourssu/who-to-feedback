@@ -1,6 +1,7 @@
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
-from core.models import ReviewCycle, Member
+
+from core.models import ReviewCycle
 from core.services.slack_service import SlackService
 
 

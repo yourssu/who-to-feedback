@@ -1,26 +1,23 @@
-from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib import messages
-from django.utils import timezone
-from django.db import IntegrityError, connection
-from django.contrib.auth.decorators import user_passes_test
-from django.http import JsonResponse, HttpResponse
 import os
 import threading
+from functools import wraps
+
+from django.contrib import messages
+from django.contrib.auth.models import User
+from django.db import IntegrityError, connection
+from django.http import HttpResponse
+from django.shortcuts import render, redirect, get_object_or_404
+from django.utils import timezone
 
 from core.models import (
     Member, ReviewCycle, ReviewQuestion, QuestionOption,
     ReviewAssignment, ReviewAuthCode, ReviewReport, DataValidationLog, SlackDeliveryLog,
     ReviewCycleVersionLog
 )
-from core.services.slack_service import SlackService
-from core.services.validation_service import DataValidationService
 from core.services.layout_service import LayoutCheckService
 from core.services.report_service import PDFReportService, PPTReportService, ReportManagementService
-
-
-
-from functools import wraps
-from django.contrib.auth.models import User
+from core.services.slack_service import SlackService
+from core.services.validation_service import DataValidationService
 
 
 def superuser_required(view_func):
@@ -101,9 +98,18 @@ def admin_create_cycle(request):
         start_at = start_at_raw if start_at_raw else None
         end_at = end_at_raw if end_at_raw else None
 
+        # end_at > start_at 검증 (둘 다 입력된 경우만)
+        if start_at and end_at:
+            from django.utils.dateparse import parse_datetime
+            start_dt = parse_datetime(start_at)
+            end_dt = parse_datetime(end_at)
+            if start_dt and end_dt and end_dt <= start_dt:
+                messages.error(request, "마감 일시는 시작 일시보다 이후여야 합니다.")
+                return redirect('admin_dashboard')
+
         cycle = ReviewCycle.objects.create(
-            title=title,
-            start_at=start_at,
+        title=title,
+        start_at=start_at,
             end_at=end_at,
             status='DRAFT',
             reviewer_notice_message=reviewer_notice or "본인에게 배정된 리뷰만 표시되며 관리자 기능에는 접근할 수 없습니다."
@@ -379,6 +385,7 @@ def admin_auto_match(request, cycle_id):
         cycle = get_object_or_404(ReviewCycle, id=cycle_id)
         members = Member.objects.all()
         created_count = 0
+        new_reviewers = set()
 
         for r in members:
             for e in members:
@@ -388,6 +395,20 @@ def admin_auto_match(request, cycle_id):
                     )
                     if created:
                         created_count += 1
+                        new_reviewers.add(r)
+
+        # ACTIVE 상태면 새로 추가된 리뷰어에게 PIN 발송
+        if cycle.status == 'ACTIVE' and new_reviewers:
+            slack = SlackService()
+            sent_count = 0
+            for r in new_reviewers:
+                auth_code, _ = ReviewAuthCode.objects.get_or_create(member=r, cycle=cycle, is_used=False)
+                if not auth_code.code:
+                    auth_code = ReviewAuthCode.generate_code_for(r, cycle)
+                success, _ = slack.send_auth_code_dm(r, auth_code.code, cycle)
+                if success:
+                    sent_count += 1
+            messages.info(request, f"진행 중인 회차이므로 새로 매칭된 리뷰어 {sent_count}명에게 인증코드 Slack DM이 자동 발송되었습니다.")
 
         messages.success(request, f"총 {created_count}건의 피어리뷰 매칭이 성공적으로 생성되었습니다!")
         return redirect('admin_assignments', cycle_id=cycle_id)
@@ -442,6 +463,22 @@ def admin_status_detail(request, cycle_id):
 def admin_start_cycle_action(request, cycle_id):
     if request.method == 'POST':
         cycle = get_object_or_404(ReviewCycle, id=cycle_id)
+
+        # DRAFT 상태일 때만 시작 허용
+        if cycle.status != 'DRAFT':
+            messages.error(request, f"[{cycle.title}] 회차는 이미 시작되었거나 종료되었습니다 (현재 상태: {cycle.get_status_display()}).")
+            return redirect('admin_status_detail', cycle_id=cycle_id)
+
+        # 질문 문항 검증
+        if cycle.questions.count() == 0:
+            messages.error(request, f"[{cycle.title}] 질문 문항을 1개 이상 등록해야 회차를 시작할 수 있습니다.")
+            return redirect('admin_status_detail', cycle_id=cycle_id)
+
+        # 매칭 검증
+        if cycle.assignments.count() == 0:
+            messages.error(request, f"[{cycle.title}] 리뷰 매칭을 1건 이상 생성해야 회차를 시작할 수 있습니다.")
+            return redirect('admin_status_detail', cycle_id=cycle_id)
+
         cycle.status = 'ACTIVE'
         if not cycle.start_at:
             cycle.start_at = timezone.now()
@@ -852,5 +889,3 @@ def admin_import_members_csv(request):
             messages.error(request, f"CSV 임포트 중 오류가 발생했습니다: {str(e)}")
 
     return redirect('admin_members')
-
-

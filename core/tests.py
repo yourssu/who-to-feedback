@@ -1,23 +1,21 @@
-from django.test import TestCase, Client
-from django.utils import timezone
-from datetime import timedelta
-from django.urls import reverse
-from django.contrib.auth.models import User
-from django.core.files.base import ContentFile
-from django.core.files.uploadedfile import SimpleUploadedFile
-import json
 import os
+from datetime import timedelta
+from unittest.mock import patch, MagicMock
+
+from django.contrib.auth.models import User
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, Client
+from django.urls import reverse
+from django.utils import timezone
 
 from core.models import (
     Member, ReviewCycle, ReviewQuestion, QuestionOption,
-    ReviewAuthCode, ReviewAssignment, ReviewAnswer, ReviewReport,
-    DataValidationLog, SlackDeliveryLog, ReviewCycleVersionLog
+    ReviewAssignment, ReviewAnswer, ReviewReport, ReviewAuthCode,
+    ReviewCycleVersionLog
 )
-from core.services.slack_service import SlackService
-from core.services.validation_service import DataValidationService
 from core.services.layout_service import LayoutCheckService
-from core.services.report_service import PDFReportService, PPTReportService, ReportManagementService
-
+from core.services.report_service import PDFReportService, ReportManagementService
+from core.services.validation_service import DataValidationService
 
 
 class PeerReviewSystemTestCase(TestCase):
@@ -395,3 +393,355 @@ class AdminSidebarTestCase(TestCase):
 
 
 
+
+class AuthLoginSecurityTestCase(TestCase):
+    """1번 인증·세션: ACTIVE 회차 PIN만 로그인 허용, URL 자동 로그인 제거, 시도 횟수 제한"""
+
+    def setUp(self):
+        self.alice = Member.objects.create(
+            name="앨리스", email="alice@test.com", slack_user_id="U_ALICE",
+            department="개발팀", role='MEMBER'
+        )
+        now = timezone.now()
+        self.active_cycle = ReviewCycle.objects.create(
+            title="진행 중 회차", start_at=now - timedelta(days=1),
+            end_at=now + timedelta(days=7), status='ACTIVE'
+        )
+        self.completed_cycle = ReviewCycle.objects.create(
+            title="완료된 회차", start_at=now - timedelta(days=14),
+            end_at=now - timedelta(days=7), status='COMPLETED'
+        )
+        self.draft_cycle = ReviewCycle.objects.create(title="준비 중 회차", status='DRAFT')
+
+        self.active_code = ReviewAuthCode.generate_code_for(self.alice, self.active_cycle)
+        self.completed_code = ReviewAuthCode.generate_code_for(self.alice, self.completed_cycle)
+        self.draft_code = ReviewAuthCode.generate_code_for(self.alice, self.draft_cycle)
+        self.client = Client()
+
+    def test_login_with_active_cycle_pin(self):
+        res = self.client.post(reverse('login'), {'code': self.active_code.code})
+        self.assertRedirects(res, reverse('review_dashboard'))
+        self.assertEqual(self.client.session['member_id'], self.alice.id)
+        self.assertEqual(self.client.session['cycle_id'], self.active_cycle.id)
+
+    def test_login_with_completed_cycle_pin_rejected(self):
+        res = self.client.post(reverse('login'), {'code': self.completed_code.code})
+        self.assertEqual(res.status_code, 200)
+        self.assertNotIn('member_id', self.client.session)
+        self.assertContains(res, '입력한 PIN이 만료되었거나 올바르지 않아요')
+
+    def test_login_with_draft_cycle_pin_rejected(self):
+        res = self.client.post(reverse('login'), {'code': self.draft_code.code})
+        self.assertEqual(res.status_code, 200)
+        self.assertNotIn('member_id', self.client.session)
+
+    def test_get_code_param_does_not_autologin(self):
+        res = self.client.get(reverse('login'), {'code': self.active_code.code})
+        self.assertEqual(res.status_code, 200)
+        self.assertNotIn('member_id', self.client.session)
+
+    def test_relogin_with_same_pin_after_logout(self):
+        self.client.post(reverse('login'), {'code': self.active_code.code})
+        self.client.get(reverse('logout'))
+        res = self.client.post(reverse('login'), {'code': self.active_code.code})
+        self.assertRedirects(res, reverse('review_dashboard'))
+
+    def test_login_locked_after_five_failures(self):
+        for _ in range(5):
+            self.client.post(reverse('login'), {'code': '000000'})
+        self.assertIn('login_lock_until', self.client.session)
+
+        # 잠금 중에는 올바른 PIN도 차단
+        res = self.client.post(reverse('login'), {'code': self.active_code.code})
+        self.assertEqual(res.status_code, 200)
+        self.assertNotIn('member_id', self.client.session)
+        self.assertContains(res, '로그인 시도가 잠시 잠겼어요')
+
+
+class ReviewCycleGateTestCase(TestCase):
+    """1번 인증·세션: 리뷰 작성/제출/임시저장은 ACTIVE + 마감 전에만 허용"""
+
+    def setUp(self):
+        self.alice = Member.objects.create(
+            name="앨리스", email="alice@test.com", slack_user_id="U_ALICE",
+            department="개발팀", role='MEMBER'
+        )
+        self.bob = Member.objects.create(
+            name="밥", email="bob@test.com", slack_user_id="U_BOB",
+            department="기획팀", role='MEMBER'
+        )
+        now = timezone.now()
+        self.active_cycle = ReviewCycle.objects.create(
+            title="진행 중 회차", start_at=now - timedelta(days=1),
+            end_at=now + timedelta(days=7), status='ACTIVE'
+        )
+        self.expired_cycle = ReviewCycle.objects.create(
+            title="마감 경과 회차", start_at=now - timedelta(days=3),
+            end_at=now - timedelta(days=1), status='ACTIVE'
+        )
+        self.closed_cycle = ReviewCycle.objects.create(
+            title="완료된 회차", start_at=now - timedelta(days=14),
+            end_at=now - timedelta(days=7), status='COMPLETED'
+        )
+        self.draft_cycle = ReviewCycle.objects.create(title="준비 중 회차", status='DRAFT')
+
+        self.q1 = ReviewQuestion.objects.create(
+            cycle=self.active_cycle, order=1, question_type='TEXT', content="강점 피드백"
+        )
+
+        self.a_active = ReviewAssignment.objects.create(
+            cycle=self.active_cycle, reviewer=self.alice, reviewee=self.bob
+        )
+        self.a_expired = ReviewAssignment.objects.create(
+            cycle=self.expired_cycle, reviewer=self.alice, reviewee=self.bob
+        )
+        self.a_closed = ReviewAssignment.objects.create(
+            cycle=self.closed_cycle, reviewer=self.alice, reviewee=self.bob
+        )
+        self.a_draft = ReviewAssignment.objects.create(
+            cycle=self.draft_cycle, reviewer=self.alice, reviewee=self.bob
+        )
+
+        self.client = Client()
+        session = self.client.session
+        session['member_id'] = self.alice.id
+        session['member_name'] = self.alice.name
+        session['cycle_id'] = self.active_cycle.id
+        session.save()
+
+    def test_review_form_editable_for_active_cycle(self):
+        res = self.client.get(reverse('review_form', kwargs={'assignment_id': self.a_active.id}))
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, 'data-review-wizard')
+
+    def test_review_form_locked_for_inactive_cycles(self):
+        for assignment in (self.a_expired, self.a_closed, self.a_draft):
+            res = self.client.get(reverse('review_form', kwargs={'assignment_id': assignment.id}))
+            self.assertEqual(res.status_code, 200)
+            self.assertContains(res, '수정 마감')
+            self.assertContains(res, '작성할 수 없습니다')
+            self.assertNotContains(res, 'data-review-wizard')
+
+    def test_review_post_rejected_for_closed_cycle(self):
+        res = self.client.post(
+            reverse('review_form', kwargs={'assignment_id': self.a_closed.id}),
+            {f'q_{self.q1.id}_text': '제출 시도'}
+        )
+        self.assertRedirects(res, reverse('review_form', kwargs={'assignment_id': self.a_closed.id}))
+        self.a_closed.refresh_from_db()
+        self.assertFalse(self.a_closed.is_submitted)
+
+    def test_save_draft_rejected_for_closed_cycle(self):
+        res = self.client.post(
+            reverse('save_draft', kwargs={'assignment_id': self.a_closed.id}),
+            {f'q_{self.q1.id}_text': '임시 저장 시도'}
+        )
+        self.assertEqual(res.status_code, 403)
+        self.assertJSONEqual(res.content, {'status': 'error', 'message': '회차가 종료되어 임시저장할 수 없습니다.'})
+
+    def test_review_submit_allowed_for_active_cycle(self):
+        res = self.client.post(
+            reverse('review_form', kwargs={'assignment_id': self.a_active.id}),
+            {f'q_{self.q1.id}_text': '훌륭한 팀원입니다.'}
+        )
+        self.assertRedirects(res, reverse('review_dashboard'))
+        self.a_active.refresh_from_db()
+        self.assertTrue(self.a_active.is_submitted)
+
+
+class ReviewDashboardScopeTestCase(TestCase):
+    """1번 인증·세션: 대시보드는 로그인한 회차(세션 cycle_id) 기준으로만 표시"""
+
+    def setUp(self):
+        self.alice = Member.objects.create(
+            name="앨리스", email="alice@test.com", slack_user_id="U_ALICE",
+            department="개발팀", role='MEMBER'
+        )
+        self.bob = Member.objects.create(
+            name="밥", email="bob@test.com", slack_user_id="U_BOB",
+            department="기획팀", role='MEMBER'
+        )
+        self.carol = Member.objects.create(
+            name="찰리", email="carol@test.com", slack_user_id="U_CAROL",
+            department="디자인팀", role='MEMBER'
+        )
+        now = timezone.now()
+        self.cycle_a = ReviewCycle.objects.create(
+            title="A 회차", start_at=now - timedelta(days=1),
+            end_at=now + timedelta(days=7), status='ACTIVE'
+        )
+        self.cycle_b = ReviewCycle.objects.create(
+            title="B 회차", start_at=now - timedelta(days=1),
+            end_at=now + timedelta(days=7), status='ACTIVE'
+        )
+        self.assignment_a = ReviewAssignment.objects.create(
+            cycle=self.cycle_a, reviewer=self.alice, reviewee=self.bob
+        )
+        self.assignment_b = ReviewAssignment.objects.create(
+            cycle=self.cycle_b, reviewer=self.alice, reviewee=self.carol
+        )
+        self.client = Client()
+
+    def test_dashboard_shows_only_session_cycle_assignments(self):
+        session = self.client.session
+        session['member_id'] = self.alice.id
+        session['member_name'] = self.alice.name
+        session['cycle_id'] = self.cycle_a.id
+        session.save()
+
+        res = self.client.get(reverse('review_dashboard'))
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, '밥')
+        self.assertContains(res, 'A 회차')
+        self.assertNotContains(res, '찰리')
+        self.assertNotContains(res, 'B 회차')
+
+    def test_dashboard_redirects_to_login_when_cycle_id_missing(self):
+        session = self.client.session
+        session['member_id'] = self.alice.id
+        session['member_name'] = self.alice.name
+        session.save()
+
+        res = self.client.get(reverse('review_dashboard'))
+        self.assertRedirects(res, reverse('login'))
+
+    def test_dashboard_hides_write_link_when_cycle_closed(self):
+        self.cycle_a.status = 'COMPLETED'
+        self.cycle_a.save()
+
+        session = self.client.session
+        session['member_id'] = self.alice.id
+        session['member_name'] = self.alice.name
+        session['cycle_id'] = self.cycle_a.id
+        session.save()
+
+        res = self.client.get(reverse('review_dashboard'))
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, '작성 마감')
+        self.assertNotContains(res, '리뷰 작성하기')
+
+
+# ==========================================
+# #2 회차·마감 제어 테스트
+# ==========================================
+class CycleCreateValidationTestCase(TestCase):
+    """admin_create_cycle의 end_at > start_at 검증 테스트"""
+
+    def setUp(self):
+        self.superuser = User.objects.create_superuser('admin', 'admin@test.com', 'password123')
+        self.client = Client()
+        self.client.login(username='admin', password='password123')
+
+    def test_create_cycle_end_before_start_shows_error(self):
+        """end_at이 start_at보다 이전이면 에러 메시지와 함께 리다이렉트"""
+        from django.utils import timezone
+        now = timezone.now()
+        start_str = (now + timedelta(days=7)).strftime('%Y-%m-%dT%H:%M')
+        end_str = now.strftime('%Y-%m-%dT%H:%M')
+        res = self.client.post(reverse('admin_create_cycle'), {
+            'title': '검증 테스트',
+            'start_at': start_str,
+            'end_at': end_str,
+        })
+        self.assertRedirects(res, reverse('admin_dashboard'))
+        self.assertFalse(ReviewCycle.objects.filter(title='검증 테스트').exists())
+
+    def test_create_cycle_valid_dates_succeeds(self):
+        """정상적인 날짜면 회차 생성 성공"""
+        from django.utils import timezone
+        now = timezone.now()
+        start_str = now.strftime('%Y-%m-%dT%H:%M')
+        end_str = (now + timedelta(days=7)).strftime('%Y-%m-%dT%H:%M')
+        res = self.client.post(reverse('admin_create_cycle'), {
+            'title': '정상 회차',
+            'start_at': start_str,
+            'end_at': end_str,
+        })
+        self.assertRedirects(res, reverse('admin_questions', args=[ReviewCycle.objects.get(title='정상 회차').id]))
+        self.assertTrue(ReviewCycle.objects.filter(title='정상 회차').exists())
+
+
+class CycleStartActionTestCase(TestCase):
+    """admin_start_cycle_action의 DRAFT 가드 + 질문·매칭 검증 테스트"""
+
+    def setUp(self):
+        self.superuser = User.objects.create_superuser('admin', 'admin@test.com', 'password123')
+        self.client = Client()
+        self.client.login(username='admin', password='password123')
+        self.alice = Member.objects.create(name="앨리스", email="alice@test.com", slack_user_id="U_ALICE")
+        self.bob = Member.objects.create(name="밥", email="bob@test.com", slack_user_id="U_BOB")
+        self.cycle = ReviewCycle.objects.create(title="시작 검증", status='DRAFT')
+
+        # SlackService 모킹
+        self.patcher = patch('core.views.admin_views.SlackService')
+        self.mock_slack = self.patcher.start()
+        self.mock_slack.return_value.send_auth_code_dm.return_value = (True, None)
+        self.mock_slack.return_value.send_reminder_dm.return_value = (True, None)
+
+    def tearDown(self):
+        self.patcher.stop()
+
+    def test_start_non_draft_cycle_shows_error(self):
+        """DRAFT가 아닌 회차 시작 시 에러"""
+        self.cycle.status = 'ACTIVE'
+        self.cycle.save()
+        res = self.client.post(reverse('admin_start_cycle_action', args=[self.cycle.id]))
+        self.assertRedirects(res, reverse('admin_status_detail', args=[self.cycle.id]))
+        self.assertEqual(ReviewCycle.objects.get(id=self.cycle.id).status, 'ACTIVE')
+
+    def test_start_draft_without_questions_shows_error(self):
+        """질문이 없는 DRAFT 회차 시작 시 에러"""
+        res = self.client.post(reverse('admin_start_cycle_action', args=[self.cycle.id]))
+        self.assertRedirects(res, reverse('admin_status_detail', args=[self.cycle.id]))
+        self.assertEqual(ReviewCycle.objects.get(id=self.cycle.id).status, 'DRAFT')
+
+    def test_start_draft_without_assignments_shows_error(self):
+        """매칭이 없는 DRAFT 회차 시작 시 에러"""
+        ReviewQuestion.objects.create(cycle=self.cycle, order=1, question_type='TEXT', content="질문")
+        res = self.client.post(reverse('admin_start_cycle_action', args=[self.cycle.id]))
+        self.assertRedirects(res, reverse('admin_status_detail', args=[self.cycle.id]))
+        self.assertEqual(ReviewCycle.objects.get(id=self.cycle.id).status, 'DRAFT')
+
+    def test_start_draft_with_questions_and_assignments_succeeds(self):
+        """질문과 매칭이 있으면 ACTIVE 전환 성공"""
+        ReviewQuestion.objects.create(cycle=self.cycle, order=1, question_type='TEXT', content="질문")
+        ReviewAssignment.objects.create(cycle=self.cycle, reviewer=self.alice, reviewee=self.bob)
+        res = self.client.post(reverse('admin_start_cycle_action', args=[self.cycle.id]))
+        self.assertRedirects(res, reverse('admin_status_detail', args=[self.cycle.id]))
+        self.assertEqual(ReviewCycle.objects.get(id=self.cycle.id).status, 'ACTIVE')
+
+
+class AutoMatchPinTestCase(TestCase):
+    """admin_auto_match ACTIVE 시 PIN 발송 테스트"""
+
+    def setUp(self):
+        self.superuser = User.objects.create_superuser('admin', 'admin@test.com', 'password123')
+        self.client = Client()
+        self.client.login(username='admin', password='password123')
+        self.alice = Member.objects.create(name="앨리스", email="alice@test.com", slack_user_id="U_ALICE")
+        self.bob = Member.objects.create(name="밥", email="bob@test.com", slack_user_id="U_BOB")
+        self.cycle_active = ReviewCycle.objects.create(title="ACTIVE 회차", status='ACTIVE')
+        self.cycle_draft = ReviewCycle.objects.create(title="DRAFT 회차", status='DRAFT')
+
+        # SlackService.send_auth_code_dm 모킹
+        from unittest.mock import patch
+        self.patcher = patch('core.views.admin_views.SlackService')
+        self.mock_slack = self.patcher.start()
+        self.mock_slack.return_value.send_auth_code_dm.return_value = (True, None)
+        self.mock_slack.return_value.send_reminder_dm.return_value = (True, None)
+
+    def tearDown(self):
+        self.patcher.stop()
+
+    def test_auto_match_active_sends_pin(self):
+        """ACTIVE 회차 자동 매칭 시 새 리뷰어에게 PIN 발송 (ReviewAuthCode 생성 확인)"""
+        res = self.client.post(reverse('admin_auto_match', args=[self.cycle_active.id]))
+        self.assertRedirects(res, reverse('admin_assignments', args=[self.cycle_active.id]))
+        self.assertTrue(ReviewAuthCode.objects.filter(member=self.alice, cycle=self.cycle_active).exists())
+        self.assertTrue(ReviewAuthCode.objects.filter(member=self.bob, cycle=self.cycle_active).exists())
+
+    def test_auto_match_draft_does_not_send_pin(self):
+        """DRAFT 회차 자동 매칭 시 PIN 발송하지 않음"""
+        res = self.client.post(reverse('admin_auto_match', args=[self.cycle_draft.id]))
+        self.assertRedirects(res, reverse('admin_assignments', args=[self.cycle_draft.id]))
+        self.assertFalse(ReviewAuthCode.objects.filter(cycle=self.cycle_draft).exists())

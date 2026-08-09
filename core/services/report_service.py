@@ -1,7 +1,7 @@
-import os
+import base64
 import io
 import math
-import base64
+import os
 import random
 
 try:
@@ -30,7 +30,7 @@ except ImportError:
 from django.conf import settings
 from django.template import Template, Context
 from django.template.loader import render_to_string
-from core.models import Member, ReviewReport, ReviewAnswer, ReviewAssignment, ReviewQuestion
+from core.models import Member, ReviewReport, ReviewAnswer, ReviewAssignment
 
 
 class PDFReportService:

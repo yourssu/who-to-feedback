@@ -22,7 +22,7 @@
     <article class="r-card{% if not item.assignment.is_submitted %} r-card-active{% endif %}">
       <div class="r-card-top"><strong>{{ item.assignment.reviewee.name }}님 리뷰</strong><span class="badge {% if item.assignment.is_submitted %}badge-success{% else %}badge-warning{% endif %}">{% if item.assignment.is_submitted %}제출 완료{% else %}작성 필요{% endif %}</span></div>
       <span>{% if item.assignment.is_submitted %}모든 질문에 답변했어요{% else %}질문 {{ cycle.questions.count }}개 · 마감 {{ cycle.end_at|date:'m.d' }}{% endif %}</span>
-      {% if not item.assignment.is_submitted %}<a class="card-link" href="{% url 'review_form' assignment_id=item.assignment.id %}">리뷰 작성하기 <span aria-hidden="true">→</span></a>{% else %}<small>제출한 리뷰</small>{% endif %}
+      {% if not item.assignment.is_submitted %}{% if can_write %}<a class="card-link" href="{% url 'review_form' assignment_id=item.assignment.id %}">리뷰 작성하기 <span aria-hidden="true">→</span></a>{% else %}<small>작성 마감</small>{% endif %}{% else %}<small>제출한 리뷰</small>{% endif %}
     </article>
     {% empty %}<div class="card empty-state">현재 배정된 리뷰가 없어요.</div>{% endfor %}
   </div>
@@ -45,7 +45,7 @@
     <article class="r-card{% if not item.assignment.is_submitted %} r-card-active{% endif %}">
       <div class="r-card-top"><strong>{{ item.assignment.reviewee.name }}님 리뷰</strong><span class="badge {% if item.assignment.is_submitted %}badge-success{% else %}badge-warning{% endif %}">{% if item.assignment.is_submitted %}완료{% else %}작성 필요{% endif %}</span></div>
       <span>{{ cycle.questions.count }}개의 질문 · {{ cycle.title }}</span>
-      {% if not item.assignment.is_submitted %}<a class="card-link" href="{% url 'review_form' assignment_id=item.assignment.id %}">리뷰 작성하기 <span aria-hidden="true">→</span></a>{% else %}<small>제출 완료</small>{% endif %}
+      {% if not item.assignment.is_submitted %}{% if can_write %}<a class="card-link" href="{% url 'review_form' assignment_id=item.assignment.id %}">리뷰 작성하기 <span aria-hidden="true">→</span></a>{% else %}<small>작성 마감</small>{% endif %}{% else %}<small>제출 완료</small>{% endif %}
     </article>
     {% empty %}<div class="card empty-state">현재 배정된 리뷰가 없어요.</div>{% endfor %}
   </div>

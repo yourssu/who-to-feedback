@@ -1,4 +1,5 @@
 from django.urls import path
+
 from core.views import auth_views, review_views, admin_views
 
 urlpatterns = [

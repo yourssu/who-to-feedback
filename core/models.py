@@ -1,6 +1,7 @@
+import random
+
 from django.db import models
 from django.utils import timezone
-import random
 
 
 class Member(models.Model):

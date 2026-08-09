@@ -8,6 +8,16 @@
   <title>{% block title %}PeerFlow{% endblock %}</title>
   <script>document.documentElement.classList.add('js');try{var t=localStorage.getItem('peerflow-theme');if(t)document.documentElement.dataset.theme=t;else if(matchMedia('(prefers-color-scheme:dark)').matches)document.documentElement.dataset.theme='dark'}catch(e){}</script>
   <link rel="stylesheet" href="{% static 'css/style.css' %}">
+  <style>
+    /* mobile-only: only show on mobile (max-width: 768px) */
+    @media (min-width: 769px) {
+      .mobile-only { display: none !important; }
+    }
+    /* desktop-only: only show on desktop (min-width: 769px) */
+    @media (max-width: 768px) {
+      .desktop-only { display: none !important; }
+    }
+  </style>
 </head>
 <body class="{% block body_class %}reviewer-app{% endblock %}">
   <div class="app-shell">

@@ -8,8 +8,8 @@
 {% if is_locked %}
 <section class="card card-raised empty-state locked-state">
   <span class="status-pill status-pill-warning">수정 마감</span>
-  <h2 class="card-title">제출한 리뷰가 잠겼어요</h2>
-  <p class="card-subtitle">회차 마감 이후에는 제출한 답변을 수정할 수 없습니다.</p>
+  <h2 class="card-title">{{ lock_title|default:'제출한 리뷰가 잠겼어요' }}</h2>
+  <p class="card-subtitle">{{ lock_message|default:'회차 마감 이후에는 제출한 답변을 수정할 수 없습니다.' }}</p>
   <a class="btn btn-primary" href="{% url 'review_dashboard' %}">내 리뷰로 돌아가기</a>
 </section>
 {% else %}
@@ -56,7 +56,7 @@
     <div class="banner question-banner">선택한 응답은 리뷰 제출 시 현재 매칭에 저장됩니다.</div>
     {% endif %}
     <div class="wizard-actions">
-      {% if item.question.question_type == 'TEXT' %}<button class="btn btn-tonal mobile-only" type="button" data-save-draft>임시 저장</button>{% endif %}
+      {% if item.question.question_type == 'TEXT' %}<button class="btn btn-tonal" type="button" data-save-draft>임시 저장</button>{% endif %}
       {% if forloop.last %}<button class="btn btn-primary" type="submit">{% if assignment.is_submitted %}수정 내용 저장{% else %}리뷰 제출{% endif %}</button>{% else %}<button class="btn btn-primary" type="button" data-wizard-next>저장하고 다음</button>{% endif %}
     </div>
   </section>

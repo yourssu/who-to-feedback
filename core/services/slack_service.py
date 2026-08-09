@@ -1,10 +1,12 @@
+import logging
 import os
 import re
-import logging
+
 from django.conf import settings
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
-from core.models import SlackDeliveryLog, Member, ReviewCycle
+
+from core.models import SlackDeliveryLog
 
 logger = logging.getLogger(__name__)
 

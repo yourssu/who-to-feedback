@@ -1,33 +1,40 @@
-from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib import messages
-from django.utils import timezone
-from django.http import JsonResponse
 import json
 
+from django.contrib import messages
+from django.http import JsonResponse
+from django.shortcuts import render, redirect, get_object_or_404
+from django.utils import timezone
+
 from core.models import (
-    Member, ReviewCycle, ReviewQuestion, QuestionOption,
-    ReviewAssignment, ReviewAnswer, ReviewAuthCode
+    Member, ReviewCycle, QuestionOption,
+    ReviewAssignment, ReviewAnswer
 )
 
 
+def _is_review_editable(cycle):
+    """ACTIVE 상태 + 마감 전에만 리뷰 작성/제출/임시저장 허용"""
+    return cycle.status == 'ACTIVE' and not cycle.is_deadline_passed
+
+
 def review_dashboard(request):
-    """리뷰어 개인 대시보드 (assigned reviews list)"""
+    """리뷰어 개인 대시보드 (세션에 저장된 로그인 회차의 assigned reviews list)"""
     member_id = request.session.get('member_id')
     if not member_id:
         return redirect('login')
 
     reviewer = get_object_or_404(Member, id=member_id)
-    cycle = ReviewCycle.objects.filter(status__in=['ACTIVE', 'COMPLETED', 'CLOSED']).first()
+
+    # PIN이 발급된 회차(세션 cycle_id) 기준으로만 대시보드를 구성한다.
+    cycle_id = request.session.get('cycle_id')
+    cycle = None
+    if cycle_id:
+        cycle = ReviewCycle.objects.filter(
+            id=cycle_id, status__in=['ACTIVE', 'COMPLETED', 'CLOSED']
+        ).first()
 
     if not cycle:
-        return render(request, 'review/dashboard.html', {
-            'reviewer': reviewer,
-            'cycle': None,
-            'assignments': [],
-            'completed_count': 0,
-            'is_completed': False,
-            'completion_rate': 0,
-        })
+        # 세션의 회차가 없거나 유효하지 않으면 재인증 유도
+        return redirect('login')
 
     raw_assignments = ReviewAssignment.objects.filter(cycle=cycle, reviewer=reviewer).select_related('reviewee')
     total_count = raw_assignments.count()
@@ -36,6 +43,7 @@ def review_dashboard(request):
     is_completed = (total_count > 0 and completed_count == total_count)
 
     days_left = (cycle.end_at - timezone.now()).days if (cycle.end_at and cycle.end_at > timezone.now()) else 0
+    can_write = _is_review_editable(cycle)
 
     # 템플릿 (dashboard.html) 호환용: item.id, item.reviewee, item.is_submitted 및 item.assignment 모두 지원
     assignments = []
@@ -58,6 +66,7 @@ def review_dashboard(request):
         'is_completed': is_completed,
         'is_all_completed': is_completed,
         'days_left': days_left,
+        'can_write': can_write,
         'is_deadline_passed': cycle.is_deadline_passed,
     })
 
@@ -73,19 +82,77 @@ def review_form(request, assignment_id):
     assignment = get_object_or_404(ReviewAssignment, id=assignment_id, reviewer=reviewer)
     cycle = assignment.cycle
 
-    # 마감 시간 경과 및 이미 제출된 경우 수정 잠금 처리 (r-submitted-locked)
-    if cycle.is_deadline_passed and assignment.is_submitted:
-        messages.warning(request, "마감 시간이 경과하여 제출된 답변은 더 이상 수정할 수 없습니다.")
-        return render(request, 'review/form.html', {
-            'assignment': assignment,
-            'cycle': cycle,
-            'is_locked': True,
-            'questions_data': [],
-        })
+    # ACTIVE + 마감 전에만 작성/제출/임시저장 허용 (r-submitted-locked / 회차 상태 게이트)
+    is_editable = _is_review_editable(cycle)
 
-    questions = cycle.questions.all().order_by('order')
+    if not is_editable:
+        lock_title = "회차가 종료되었어요" if not assignment.is_submitted else "제출한 리뷰가 잠겼어요"
+        lock_message = (
+            "회차가 종료되어 리뷰를 작성할 수 없습니다." if not assignment.is_submitted
+            else "마감 시간이 경과하여 제출된 답변은 더 이상 수정할 수 없습니다."
+        )
+        messages.warning(request, lock_message)
+        if request.method == 'POST':
+        has_error = False
+        error_message = ''
 
-    if request.method == 'POST':
+        # Validate required fields
+        for q in questions:
+            if q.question_type == 'RATING':
+                rating_val = request.POST.get(f'q_{q.id}_rating')
+                if not rating_val:
+                    has_error = True
+                    error_message = '모든 평점 문항에 답변해 주세요.'
+                    break
+            elif q.question_type == 'SINGLE_CHOICE':
+                option_id = request.POST.get(f'q_{q.id}_single')
+                if not option_id:
+                    has_error = True
+                    error_message = '모든 단일 선택 문항에 답변해 주세요.'
+                    break
+            elif q.question_type == 'TEXT':
+                text_val = request.POST.get(f'q_{q.id}_text', '').strip()
+                if not text_val:
+                    has_error = True
+                    error_message = '모든 텍스트 문항에 답변해 주세요.'
+                    break
+
+        if has_error:
+            messages.error(request, error_message)
+            # Re-render form with existing data
+            questions_data = []
+            text_5_labels = {1: "매우 아님", 2: "약간 아님", 3: "보통임", 4: "약간 그럼", 5: "매우 그럼"}
+            numeric_5_labels = {1: "1점", 2: "2점", 3: "3점", 4: "4점", 5: "5점"}
+            for q in questions:
+                item = {'question': q, 'scale_options': [], 'options': q.options.all(), 'draft_rating': None, 'draft_text': '', 'draft_single': None, 'draft_multi': []}
+                if q.question_type == 'RATING':
+                    scale_type = 'numeric'
+                    labels = numeric_5_labels if scale_type == 'numeric' else text_5_labels
+                    item['scale_options'] = [{'val': i, 'label': labels[i]} for i in range(1, 6)]
+                # Restore POST data
+                if q.question_type == 'RATING':
+                    rating_val = request.POST.get(f'q_{q.id}_rating')
+                    if rating_val:
+                        item['draft_rating'] = int(rating_val)
+                elif q.question_type == 'TEXT':
+                    item['draft_text'] = request.POST.get(f'q_{q.id}_text', '')
+                elif q.question_type == 'SINGLE_CHOICE':
+                    single_val = request.POST.get(f'q_{q.id}_single')
+                    if single_val:
+                        item['draft_single'] = int(single_val)
+                elif q.question_type == 'MULTIPLE_CHOICE':
+                    multi_vals = request.POST.getlist(f'q_{q.id}_multi')
+                    item['draft_multi'] = [int(v) for v in multi_vals]
+                questions_data.append(item)
+            return render(request, 'review/form.html', {
+                'assignment': assignment,
+                'cycle': cycle,
+                'questions_data': questions_data,
+                'is_editable': is_editable,
+                'is_locked': False,
+            })
+
+        # Save answers
         for q in questions:
             ans, _ = ReviewAnswer.objects.get_or_create(assignment=assignment, question=q)
 
@@ -104,7 +171,7 @@ def review_form(request, assignment_id):
                 option_id = request.POST.get(f'q_{q.id}_single')
                 if option_id:
                     ans.selected_options.clear()
-                    opt = QuestionOption.objects.filter(id=option_id).first()
+                    opt = QuestionOption.objects.filter(id=option_id, question=q).first()
                     if opt:
                         ans.selected_options.add(opt)
                 ans.save()
@@ -113,7 +180,7 @@ def review_form(request, assignment_id):
                 option_ids = request.POST.getlist(f'q_{q.id}_multi')
                 ans.selected_options.clear()
                 if option_ids:
-                    opts = QuestionOption.objects.filter(id__in=option_ids)
+                    opts = QuestionOption.objects.filter(id__in=option_ids, question=q)
                     ans.selected_options.add(*opts)
                 ans.save()
 
@@ -180,7 +247,7 @@ def review_form(request, assignment_id):
         'cycle': cycle,
         'questions_data': questions_data,
         'draft_data': draft,
-        'is_editable': not cycle.is_deadline_passed,
+        'is_editable': is_editable,
         'is_locked': False,
     })
 
@@ -195,6 +262,10 @@ def save_draft(request, assignment_id):
         return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=401)
 
     assignment = get_object_or_404(ReviewAssignment, id=assignment_id, reviewer_id=member_id)
+
+    # ACTIVE + 마감 전이 아니면 임시저장 불가
+    if not _is_review_editable(assignment.cycle):
+        return JsonResponse({'status': 'error', 'message': '회차가 종료되어 임시저장할 수 없습니다.'}, status=403)
 
     try:
         # 전체 폼 데이터 파싱 (JSON 또는 FormData 지원)
