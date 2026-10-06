@@ -139,8 +139,15 @@ export function createApp(repo: Repository) {
     if (!path.startsWith(root + sep)) return c.notFound();
     const file = Bun.file(path);
     if (!(await file.exists())) return c.notFound();
-    c.header("Cache-Control", "public, max-age=3600");
-    return c.body(await file.arrayBuffer(), 200, { "Content-Type": file.type });
+    const etag = `W/"${file.size}-${file.lastModified}"`;
+    const headers = {
+      "Cache-Control": "public, max-age=3600",
+      "Content-Type": file.type,
+      ETag: etag,
+    };
+    if (c.req.header("If-None-Match") === etag)
+      return new Response(null, { status: 304, headers });
+    return new Response(file, { headers });
   });
   app.use(
     "*",

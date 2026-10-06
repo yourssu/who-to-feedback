@@ -6,6 +6,19 @@ import { reportPrintStyle } from "./reporting/print-style";
 import { paginateQuestions } from "./reporting/pagination";
 import { now, enqueue } from "./domain";
 import { escapeHtml, renderCustom, templates } from "./templates";
+const fontUris = new Map<string, string>();
+function fontData(format: "ttf" | "woff2") {
+  let uri = fontUris.get(format);
+  if (!uri) {
+    uri =
+      `data:font/${format};base64,` +
+      readFileSync(`core/static/fonts/Pretendard-Regular.${format}`).toString(
+        "base64",
+      );
+    fontUris.set(format, uri);
+  }
+  return uri;
+}
 const colors = [
   "#2B2D6E",
   "#8B7CE8",
@@ -99,7 +112,7 @@ export function compileFeedback(
   cycleId: number,
   memberId: number,
 ): Row {
-  const cycle = repo.cycle(cycleId),
+  const cycle = repo.require("cycles", cycleId),
     member = repo.require("members", memberId);
   const total = repo.one(
     "SELECT count(*) n FROM assignments WHERE cycle_id=? AND reviewee_id=? AND is_submitted=1",
@@ -115,19 +128,33 @@ export function compileFeedback(
     questions_data: [],
   };
   const categories = new Map<string, number[]>();
+  const byQuestion = new Map<number, Row[]>();
+  for (const answer of repo.all(
+    "SELECT a.* FROM answers a JOIN assignments s ON s.id=a.assignment_id WHERE s.cycle_id=? AND s.reviewee_id=? AND s.is_submitted=1 AND a.is_excluded_from_report=0",
+    cycleId,
+    memberId,
+  )) {
+    const values = byQuestion.get(answer.question_id) ?? [];
+    values.push(answer);
+    byQuestion.set(answer.question_id, values);
+  }
+  const optionCounts = new Map(
+    repo
+      .all(
+        "SELECT ao.option_id,count(*) n FROM answer_options ao JOIN answers a ON a.id=ao.answer_id JOIN assignments s ON s.id=a.assignment_id WHERE s.cycle_id=? AND s.reviewee_id=? AND s.is_submitted=1 AND a.is_excluded_from_report=0 GROUP BY ao.option_id",
+        cycleId,
+        memberId,
+      )
+      .map((row) => [row.option_id, row.n]),
+  );
   for (const [index, q] of repo.questions(cycleId).entries()) {
-    const answers = repo.all(
-      "SELECT a.* FROM answers a JOIN assignments s ON s.id=a.assignment_id WHERE s.cycle_id=? AND s.reviewee_id=? AND s.is_submitted=1 AND a.question_id=? AND a.is_excluded_from_report=0",
-      cycleId,
-      memberId,
-      q.id,
-    );
+    const answers = byQuestion.get(q.id) ?? [];
     const data: Row = {
       order: q.order,
       content: q.content,
       category: q.category || "기본 역량",
       question_type: q.question_type,
-      image_url: imageData(repo.require("questions", q.id).image),
+      image_url: imageData(q.image?.url.slice("/media/".length) ?? null),
       avg_rating: 0,
       avg_rating_label: "0.0점",
       rating_percent: 0,
@@ -167,12 +194,7 @@ export function compileFeedback(
         .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
     else {
       data.options_summary = q.options.map((o: Row) => {
-        const count = repo.one(
-          "SELECT count(*) n FROM answer_options ao JOIN answers a ON a.id=ao.answer_id JOIN assignments s ON s.id=a.assignment_id WHERE ao.option_id=? AND s.cycle_id=? AND s.reviewee_id=? AND s.is_submitted=1 AND a.is_excluded_from_report=0",
-          o.id,
-          cycleId,
-          memberId,
-        )!.n;
+        const count = optionCounts.get(o.id) ?? 0;
         return {
           text: o.option_text,
           count,
@@ -220,9 +242,9 @@ export function compileFeedback(
   context.report_keywords = [
     ...new Set(context.questions_data.flatMap((q: Row) => q.selected_options)),
   ].slice(0, 6);
-  context.font_path =
-    "data:font/ttf;base64," +
-    readFileSync("core/static/fonts/Pretendard-Regular.ttf").toString("base64");
+  // Keep custom templates with an explicit truetype format compatible.
+  context.font_format = cycle.use_custom_template ? "truetype" : "woff2";
+  context.font_path = fontData(cycle.use_custom_template ? "ttf" : "woff2");
   return context;
 }
 export function generateReport(

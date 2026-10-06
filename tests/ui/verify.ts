@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { createApp } from "../../src/app";
 import { openDatabase, type Row } from "../../src/db";
 import { seedDemo } from "../../scripts/seed";
-import { Client } from "../helpers";
+import { Client, mockPdf } from "../helpers";
 import { closeCycle } from "../../src/domain";
 import { JobRunner } from "../../src/jobs";
 import { generateAll } from "../../src/reports";
@@ -106,7 +106,8 @@ await capture(admin, "/admin-panel/messages/send/", "messages-failed");
 repo.run("UPDATE jobs SET status='PENDING',error='' WHERE id=?", dm.id);
 closeCycle(repo, cycle);
 generateAll(repo, cycle);
-const runner = new JobRunner(repo, { send: async () => ({}) });
+// PDF rendering is exercised once in test:pdf; UI only needs ready/error states.
+const runner = new JobRunner(repo, { send: async () => ({}) }, mockPdf);
 while (await runner.tick()) {}
 for (const report of repo.all("SELECT pdf_status,error_log FROM reports"))
   if (report.pdf_status !== "READY")
@@ -158,7 +159,7 @@ captures.push({
 });
 for (const capture of captures) {
   await Bun.write(`${root}/${capture.name}.html`, capture.html);
-  if (capture.context)
+  if (process.env.UI_EXPORT_CONTEXT === "true" && capture.context)
     await Bun.write(
       `${root}/${capture.name}.json`,
       JSON.stringify(
@@ -173,6 +174,32 @@ if (process.env.UI_EXPORT_ONLY === "true") {
   repo.db.close();
   process.exit(0);
 }
+const screens = new Map(captures.map((c) => [c.name, c.html]));
+const screenServer = Bun.serve({
+  hostname: "127.0.0.1",
+  port: 0,
+  fetch(request) {
+    const path = new URL(request.url).pathname;
+    if (path.startsWith("/screen/")) {
+      const html = screens.get(path.slice("/screen/".length));
+      return new Response(html ?? "Not found", {
+        status: html ? 200 : 404,
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      });
+    }
+    return app.fetch(request);
+  },
+});
+const flowRepo = openDatabase(":memory:");
+seedDemo(flowRepo);
+const flowApp = createApp(flowRepo);
+const flowServer = Bun.serve({
+  hostname: "127.0.0.1",
+  port: 0,
+  fetch: (request) => flowApp.fetch(request),
+});
+const flowOrigin = flowServer.url.origin;
+process.env.SITE_URL = flowOrigin;
 const executable = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE;
 const browser = await chromium.launch(
   executable ? { executablePath: executable } : {},
@@ -180,145 +207,109 @@ const browser = await chromium.launch(
 const errors: string[] = [];
 const checks: Row[] = [];
 try {
-  for (const viewport of [
-    { width: 1440, height: 1000 },
-    { width: 390, height: 844 },
-  ])
-    for (const theme of ["light", "dark"] as const) {
-      const context = await browser.newContext({
-        viewport,
-        colorScheme: theme,
-      });
-      context.setDefaultTimeout(15000);
-      context.setDefaultNavigationTimeout(15000);
-      await context.route("**/*", async (route) => {
-        const req = route.request(),
-          url = new URL(req.url());
-        if (url.hostname !== "peerflow.test") {
-          await route.abort();
-          return;
-        }
-        if (url.pathname.startsWith("/static/")) {
-          const response = await app.request(`http://localhost${url.pathname}`);
-          await route.fulfill({
-            status: response.status,
-            contentType: response.headers.get("content-type") ?? "",
-            body: Buffer.from(await response.arrayBuffer()),
-          });
-        } else if (url.pathname === "/screen")
-          await route.fulfill({ contentType: "text/html", body: currentHtml });
-        else await route.abort();
-      });
-      let currentHtml = "";
-      const page = await context.newPage();
-      page.on("pageerror", (error) => errors.push(error.message));
-      for (const capture of captures) {
-        currentHtml = capture.html;
-        await page.goto("http://peerflow.test/screen");
-        await page.evaluate(() => document.fonts.ready);
-        await page.waitForTimeout(50);
-        const horizontalOverflow = await page.evaluate(
-          () => document.documentElement.scrollWidth > innerWidth + 1,
-        );
-        if (horizontalOverflow && capture.name !== "report-html")
-          errors.push(
-            `${capture.name} ${viewport.width} ${theme}: horizontal overflow`,
+  const variants = await Promise.allSettled(
+    [
+      { width: 1440, height: 1000 },
+      { width: 390, height: 844 },
+    ].map(async (viewport) => {
+      for (const theme of ["light", "dark"] as const) {
+        const context = await browser.newContext({
+          viewport,
+          colorScheme: theme,
+        });
+        context.setDefaultTimeout(15000);
+        context.setDefaultNavigationTimeout(15000);
+        const page = await context.newPage();
+        page.on("pageerror", (error) => errors.push(error.message));
+        for (const capture of captures) {
+          await page.goto(`${screenServer.url.origin}/screen/${capture.name}`);
+          await page.evaluate(() => document.fonts.ready);
+          const horizontalOverflow = await page.evaluate(
+            () => document.documentElement.scrollWidth > innerWidth + 1,
           );
-        await page.screenshot({
-          path: `${root}/${capture.name}-${viewport.width}-${theme}.png`,
-          fullPage: true,
-        });
-        checks.push({
-          screen: capture.name,
-          width: viewport.width,
-          theme,
-          horizontalOverflow,
-        });
-        console.log("PASS", capture.name, viewport.width, theme);
-        if (capture.name === "review-form") {
-          await page
-            .getByRole("button", { name: "리뷰 시작", exact: true })
-            .click();
+          if (horizontalOverflow && capture.name !== "report-html")
+            errors.push(
+              `${capture.name} ${viewport.width} ${theme}: horizontal overflow`,
+            );
           await page.screenshot({
-            path: `${root}/review-rating-${viewport.width}-${theme}.png`,
+            path: `${root}/${capture.name}-${viewport.width}-${theme}.png`,
             fullPage: true,
+            animations: "disabled",
           });
-          await page
-            .locator(".wizard-step.active .rating-option label")
-            .nth(3)
-            .click();
-          await page.locator(".wizard-step.active [data-wizard-next]").click();
-          await page.screenshot({
-            path: `${root}/review-text-${viewport.width}-${theme}.png`,
-            fullPage: true,
+          checks.push({
+            screen: capture.name,
+            width: viewport.width,
+            theme,
+            horizontalOverflow,
           });
-          await page
-            .locator(".wizard-step.active textarea")
-            .fill("항상 구체적인 피드백으로 협업을 도와주셨습니다.");
-          await page.locator(".wizard-step.active [data-wizard-next]").click();
-          await page.screenshot({
-            path: `${root}/review-single-${viewport.width}-${theme}.png`,
-            fullPage: true,
-          });
-          await page
-            .locator(".wizard-step.active .option-item")
-            .first()
-            .click();
-          await page.locator(".wizard-step.active [data-wizard-next]").click();
-          await page.screenshot({
-            path: `${root}/review-multi-${viewport.width}-${theme}.png`,
-            fullPage: true,
-          });
+          console.log("PASS", capture.name, viewport.width, theme);
+          if (capture.name === "review-form") {
+            await page
+              .getByRole("button", { name: "리뷰 시작", exact: true })
+              .click();
+            await page.screenshot({
+              path: `${root}/review-rating-${viewport.width}-${theme}.png`,
+              fullPage: true,
+              animations: "disabled",
+            });
+            await page
+              .locator(".wizard-step.active .rating-option label")
+              .nth(3)
+              .click();
+            await page
+              .locator(".wizard-step.active [data-wizard-next]")
+              .click();
+            await page.screenshot({
+              path: `${root}/review-text-${viewport.width}-${theme}.png`,
+              fullPage: true,
+              animations: "disabled",
+            });
+            await page
+              .locator(".wizard-step.active textarea")
+              .fill("항상 구체적인 피드백으로 협업을 도와주셨습니다.");
+            await page
+              .locator(".wizard-step.active [data-wizard-next]")
+              .click();
+            await page.screenshot({
+              path: `${root}/review-single-${viewport.width}-${theme}.png`,
+              fullPage: true,
+              animations: "disabled",
+            });
+            await page
+              .locator(".wizard-step.active .option-item")
+              .first()
+              .click();
+            await page
+              .locator(".wizard-step.active [data-wizard-next]")
+              .click();
+            await page.screenshot({
+              path: `${root}/review-multi-${viewport.width}-${theme}.png`,
+              fullPage: true,
+              animations: "disabled",
+            });
+          }
         }
+        await context.close();
       }
-      await context.close();
-    }
+    }),
+  );
+  for (const result of variants)
+    if (result.status === "rejected") throw result.reason;
   if (errors.length) throw new Error("브라우저 오류: " + errors.join("\n"));
   // Exercise the real form/CSRF/wizard workflow in a browser using a separate fresh DB.
-  const flowRepo = openDatabase(":memory:");
-  seedDemo(flowRepo);
-  const flowApp = createApp(flowRepo);
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
   });
   context.setDefaultTimeout(15000);
   context.setDefaultNavigationTimeout(15000);
-  await context.route("**/*", async (route) => {
-    const req = route.request(),
-      u = new URL(req.url());
-    if (u.hostname !== "peerflow.test") {
-      await route.abort();
-      return;
-    }
-    const response = await flowApp.request(
-      `http://peerflow.test${u.pathname}${u.search}`,
-      {
-        method: req.method(),
-        headers: req.headers(),
-        body: req.postData() ?? undefined,
-      },
-    );
-    const headers: Record<string, string> = {};
-    response.headers.forEach((v, k) => {
-      if (k !== "set-cookie") headers[k] = v;
-    });
-    // Playwright accepts newline-separated Set-Cookie values on intercepted responses.
-    const cookies = response.headers.getSetCookie();
-    if (cookies.length) headers["set-cookie"] = cookies.join("\n");
-    await route.fulfill({
-      status: response.status,
-      headers,
-      body: Buffer.from(await response.arrayBuffer()),
-    });
-  });
   const page = await context.newPage();
   page.on("dialog", (d) => d.accept());
-  await page.goto("http://peerflow.test/login/");
+  await page.goto(`${flowOrigin}/login/`);
   await page
     .locator("#code")
     .fill(flowRepo.one("SELECT code FROM pins WHERE member_id=1")!.code);
   await page.getByRole("button", { name: "로그인", exact: true }).click();
-  await page.waitForURL("http://peerflow.test/");
+  await page.waitForURL(`${flowOrigin}/`);
   await page
     .getByRole("link", { name: /리뷰 작성하기/ })
     .first()
@@ -340,11 +331,10 @@ try {
   await page.locator(".wizard-step.active [data-wizard-next]").click();
   await page.locator(".wizard-step.active .option-item").first().click();
   await page.getByRole("button", { name: "리뷰 제출", exact: true }).click();
-  await page.waitForURL("http://peerflow.test/");
+  await page.waitForURL(`${flowOrigin}/`);
   if (flowRepo.require("assignments", 1).is_submitted !== 1)
     throw new Error("브라우저 제출이 DB에 반영되지 않았습니다.");
   await context.close();
-  flowRepo.db.close();
   await Bun.write(
     `${root}/checks.json`,
     JSON.stringify({ checks, errors, browserFlow: "PASS" }, null, 2),
@@ -354,5 +344,8 @@ try {
   );
 } finally {
   await browser.close();
+  await screenServer.stop(true);
+  await flowServer.stop(true);
+  flowRepo.db.close();
   repo.db.close();
 }

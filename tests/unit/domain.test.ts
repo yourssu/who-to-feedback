@@ -166,7 +166,7 @@ describe("집계와 양식", () => {
     submitReview(r, 1, 1, 1, answers());
     generateReport(r, 1, 2);
     const html = r.one("SELECT html FROM reports")!.html;
-    expect(html).toContain("data:font/ttf;base64,");
+    expect(html).toContain("data:font/woff2;base64,");
     expect(html).toContain("data:image/svg+xml;base64,");
     expect(html).not.toContain("file://");
     expect(html).not.toContain("{%");

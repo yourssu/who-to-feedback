@@ -9,7 +9,7 @@ COPY --from=dependencies /app/node_modules ./node_modules
 COPY package.json bun.lock tsconfig.json ./
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/peerflow-browsers
 # Chromium prints HTML/CSS directly to vector PDF through the TypeScript worker.
-RUN bunx playwright install --with-deps chromium
+RUN bunx playwright install --with-deps --only-shell chromium
 COPY src ./src
 COPY scripts ./scripts
 COPY core/templates ./core/templates
