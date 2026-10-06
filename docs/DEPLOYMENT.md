@@ -179,4 +179,15 @@ PDF 검증에는 Poppler가 필요합니다. macOS는 `brew install poppler`, Ub
 | Slack 실패 | mock 모드, 토큰·권한·이메일, 실패/확인 필요 이력 |
 | media가 비로그인 노출 | 기존 Nginx alias·CDN 공개 캐시 제거 여부 |
 
-로컬 통과는 Docker 실행·원격 CI·실제 Slack 전달·운영 배포 완료의 증거가 아닙니다. 현재 검증 범위는 [리팩토링 결과](REFACTOR_RESULT.md), PDF 변경은 [커스텀 양식 가이드](CUSTOM_HTML_TEMPLATE_GUIDE.md)를 확인합니다.
+### 로컬 Docker 검증
+
+Docker 데몬과 호스트 Bun·Poppler가 준비되어 있으면 다음 명령으로 이미지를 검증합니다.
+
+```sh
+docker build -t peerflow:local-verification .
+bun run scripts/verify-docker.ts
+```
+
+스크립트는 `.env`를 컨테이너에 전달하지 않으며 별도 테스트 볼륨·임의의 localhost 포트·mock Slack을 사용합니다. 운영 모드에서 초기 설정·관리자/PIN 로그인·리뷰 제출·실제 PDF·mock 발송·재시작·백업을 확인하고 임시 컨테이너와 볼륨을 제거합니다. Secure 쿠키는 HTTPS 프록시 뒤의 앱을 흉내 내기 위해 테스트 클라이언트가 직접 전달합니다. 따라서 Nginx·TLS·브라우저의 HTTPS 쿠키 처리를 검증한 결과는 아닙니다. 산출물은 `artifacts/docker/`에 저장됩니다.
+
+로컬 통과는 원격 CI·실제 Slack 전달·운영 배포 완료의 증거가 아닙니다. 현재 검증 범위는 [리팩토링 결과](REFACTOR_RESULT.md), PDF 변경은 [커스텀 양식 가이드](CUSTOM_HTML_TEMPLATE_GUIDE.md)를 확인합니다.

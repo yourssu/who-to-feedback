@@ -37,6 +37,7 @@
 | `bun run test:ui` | 33개 화면 × 데스크톱/모바일 × 라이트/다크, 총 132개 캡처. 가로 넘침 검사 및 브라우저 임시 저장·제출 흐름 통과 |
 | `bun run test:pdf` | 예시 3건 각각 7페이지, 긴 피드백 11페이지. 실제 PDF 페이지 수·한글 원문 보존 검사 통과 |
 | PDF 시각 점검 | 예시 1건의 전체 7페이지와 긴 피드백 중간 4페이지를 렌더링해 카드·본문·바닥글 잘림을 점검 |
+| Docker 이미지·기동 | 로컬 Linux arm64 이미지 빌드와 운영 모드 기동·업무 흐름·PDF·재시작·백업 검사 통과 |
 | Compose 정적 검증 | `.env.example`로 구성 해석. 컨테이너 `HOST=0.0.0.0`, `NODE_ENV=production`, 호스트 `127.0.0.1:8000` 확인 |
 | `git diff --check` | 통과 |
 
@@ -46,7 +47,7 @@ UI 산출물은 `artifacts/ui/checks.json`과 같은 디렉터리의 화면 캡�
 
 ## 검증 범위와 운영 전 확인
 
-- Docker 데몬이 실행되지 않아 이미지 빌드·컨테이너 실행을 검증하지 못했습니다. 배포 환경에서 Docker 빌드와 PDF 생성을 확인해야 합니다.
+- 후속 로컬 검증에서 Linux arm64 Docker 이미지 빌드·실행·PDF 생성·재시작·백업까지 확인했습니다. 다른 CPU 아키텍처, 실제 운영 서버, Nginx·TLS는 별도 검증이 필요합니다.
 - Slack 테스트는 대체 어댑터를 사용했습니다. 실제 토큰·워크스페이스 권한·DM·HTML/PDF 업로드는 별도 테스트 회차로 확인해야 합니다.
 - GitHub Actions 워크플로를 추가했으며 원격 CI 실행 결과는 아직 없습니다.
 - UI 검증은 현재 코드의 렌더링·응답·반응형·오류 상태 검증입니다. 최신 Figma 재조회 또는 이전 Django 화면과의 픽셀 단위 일치 검증은 수행하지 않았습니다.
@@ -66,3 +67,18 @@ UI 산출물은 `artifacts/ui/checks.json`과 같은 디렉터리의 화면 캡�
 - [승인된 재개 계획과 최초 진단](REFACTOR_CONTINUATION_SPEC.md)
 
 PDF 구현 방식은 [Playwright `page.pdf` 공식 문서](https://playwright.dev/docs/api/class-page#page-pdf)를 확인했습니다. 컨테이너 브라우저 구성은 [Playwright Docker 문서](https://playwright.dev/docs/docker), 이메일 조회 권한은 [Slack `users.lookupByEmail` 공식 문서](https://docs.slack.dev/reference/methods/users.lookupByEmail/)를 기준으로 정리했습니다.
+
+## 로컬 Docker 후속 검증 (2026-10-06)
+
+`peerflow:local-verification` 이미지를 Docker Desktop에서 빌드하고 별도 임시 볼륨·임의 localhost 포트·mock Slack으로 확인했습니다. 실제 `.env`나 기존 DB를 컨테이너에 전달하지 않았습니다.
+
+- 운영 기동·health·Secure 세션 쿠키·최초 관리자 생성/로그인·초기 설정 폐쇄·CSRF 차단
+- 정적 파일·인증된 질문 이미지·PIN 로그인·리뷰 임시 저장/제출·관리자 화면
+- Linux Chromium의 실제 PDF 3건: 각각 7페이지, 한글 텍스트 추출 및 인증된 다운로드
+- 관리자 승인과 mock 발송 후 회차 종료
+- 컨테이너 재시작 후 세션·저장 PDF 유지
+- 앱 정지 후 SQLite/media 백업, DB 무결성 `ok`, READY 보고서 3건·이미지 파일 복구 확인
+
+앱 자체의 실행 오류는 발견하지 않았습니다. 추가한 검증기에서 비로그인 이미지 응답을 401로 가정한 부분을 실제 로그인 리다이렉트 검사로 수정했습니다. Docker 재시작 시 임의 호스트 포트가 바뀌는 것을 확인해 접속 주소를 다시 조회하고, 백업 검증 SQL을 매개변수 방식으로 수정했습니다. 빌드 컨텍스트에서 로컬 PDF 산출물 `output/`을 제외했습니다.
+
+재현 명령과 경계는 [통합 배포 가이드](DEPLOYMENT.md)의 로컬 Docker 검증 절을 확인합니다. 검증기는 `scripts/verify-docker.ts`, 상세 결과와 PDF는 `artifacts/docker/`에 저장되며 Git에서는 제외합니다. 테스트 컨테이너·볼륨은 정리하고 이미지는 재사용할 수 있도록 남깁니다. 실제 Slack·Nginx·TLS·운영 배포는 이번 검증에 포함하지 않았습니다.

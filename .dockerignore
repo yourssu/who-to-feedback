@@ -8,6 +8,7 @@ venv
 data
 media
 artifacts
+output
 staticfiles
 __pycache__
 *.pyc
