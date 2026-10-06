@@ -1,12 +1,16 @@
 import { z } from "zod";
 import { DomainError } from "../db";
 import { enqueue } from "../domain";
-import { checkLayouts, publish, reportRows } from "../reports";
+import {
+  checkLayouts,
+  invalidateReports,
+  publish,
+  reportRows,
+} from "../reports";
 import { validateCustomTemplate } from "../templates";
 import type { HttpServices } from "../http/types";
 export function registerReportsRoutes(services: HttpServices) {
-  const { repo, route, page, flash, form, id, back, invalidateReports } =
-    services;
+  const { repo, route, page, flash, form, id, back } = services;
   route("admin_reports", "get", (c) =>
     page(c, "admin_custom/reports.html", {
       cycle: repo.cycle(id(c)),
@@ -129,7 +133,7 @@ export function registerReportsRoutes(services: HttpServices) {
     const source = await file.text();
     validateCustomTemplate(source);
     repo.transaction(() => {
-      invalidateReports(cycle.id);
+      invalidateReports(repo, cycle.id);
       repo.run(
         "UPDATE cycles SET custom_template=?,custom_template_name=?,use_custom_template=1 WHERE id=?",
         source,
@@ -145,7 +149,7 @@ export function registerReportsRoutes(services: HttpServices) {
     if (cycle.status === "CLOSED" || !cycle.custom_template)
       throw new DomainError("변경할 수 있는 양식이 없습니다.");
     repo.transaction(() => {
-      invalidateReports(cycle.id);
+      invalidateReports(repo, cycle.id);
       repo.run(
         "UPDATE cycles SET use_custom_template=1-use_custom_template WHERE id=?",
         cycle.id,

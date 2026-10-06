@@ -15,13 +15,11 @@ export function registerAssignmentsRoutes(services: HttpServices) {
     });
   });
   route("admin_add_assignment", "post", (c) => {
-    repo.transaction(() =>
-      addAssignment(
-        repo,
-        id(c),
-        numeric(form(c).reviewer_id),
-        numeric(form(c).reviewee_id),
-      ),
+    addAssignment(
+      repo,
+      id(c),
+      numeric(form(c).reviewer_id),
+      numeric(form(c).reviewee_id),
     );
     return back(c, id(c), "admin_assignments");
   });

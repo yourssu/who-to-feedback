@@ -1,9 +1,9 @@
+import { invalidateReports } from "../reports";
 import { z } from "zod";
 import { DomainError, type Row } from "../db";
 import type { Ctx, HttpServices } from "../http/types";
 export function registerValidationRoutes(services: HttpServices) {
-  const { repo, route, page, flash, form, id, back, invalidateReports } =
-    services;
+  const { repo, route, page, flash, form, id, back } = services;
   const validation = (c: Ctx, cycle: Row | null) => {
     const members = repo.members(),
       suggestions: Row[] = [],
@@ -79,7 +79,7 @@ export function registerValidationRoutes(services: HttpServices) {
     if (repo.cycle(assignment.cycle_id).status === "CLOSED")
       throw new DomainError("배포가 종료된 답변은 변경할 수 없습니다.");
     repo.transaction(() => {
-      invalidateReports(assignment.cycle_id);
+      invalidateReports(repo, assignment.cycle_id);
       repo.run(
         "UPDATE answers SET is_excluded_from_report=1-is_excluded_from_report WHERE id=?",
         a.id,

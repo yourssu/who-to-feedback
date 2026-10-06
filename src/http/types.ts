@@ -50,8 +50,6 @@ export interface HttpServices {
   form: (c: Ctx) => Row;
   id: (c: Ctx, name?: string) => number;
   back: (c: Ctx, cycle: number, screen?: RouteName) => Response;
-  draftCycle: (cycle: number) => Row;
-  invalidateReports: (cycle: number) => void;
   clientKey: (c: Ctx, identity: string) => string;
   locked: (key: string) => boolean;
   fail: (key: string) => void;

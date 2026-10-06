@@ -67,6 +67,10 @@ describe("회차와 리뷰 무결성", () => {
   });
   test.each([
     { q_1_rating: "99" },
+    { q_1_rating: true },
+    { q_1_rating: ["4"] },
+    { q_3_single: true },
+    { q_4_multi: [["3"]] },
     { q_2_text: "a".repeat(2001) },
     { q_3_single: "3" },
     { q_4_multi: [] },
@@ -88,6 +92,14 @@ describe("회차와 리뷰 무결성", () => {
       "3",
     );
   });
+  test("잘못된 JSON 타입의 임시 저장은 기존 답변을 덮어쓰지 않는다", () => {
+    const r = db();
+    startCycle(r, 1);
+    saveDraft(r, 1, 1, 1, answers());
+    const before = r.require("assignments", 1).draft_data;
+    expect(() => saveDraft(r, 1, 1, 1, { q_1_rating: true })).toThrow();
+    expect(r.require("assignments", 1).draft_data).toBe(before);
+  });
   test("마감 뒤 제출·매칭을 차단한다", () => {
     const r = db();
     startCycle(r, 1);
@@ -103,6 +115,20 @@ describe("회차와 리뷰 무결성", () => {
     expect(() => addAssignment(r, 1, 1, 1)).toThrow();
     addAssignment(r, 1, 1, 2);
     expect(r.all("SELECT * FROM assignments")).toHaveLength(3);
+  });
+  test("ACTIVE 매칭 추가 중 PIN 발송 등록이 실패하면 매칭과 PIN을 함께 롤백한다", () => {
+    const r = db();
+    startCycle(r, 1);
+    r.run(
+      "INSERT INTO members(name,email,created_at) VALUES ('New','new@example.com',?)",
+      new Date().toISOString(),
+    );
+    r.db.exec(
+      "CREATE TRIGGER fail_job BEFORE INSERT ON jobs BEGIN SELECT RAISE(ABORT,'queue unavailable'); END",
+    );
+    expect(() => addAssignment(r, 1, 4, 2)).toThrow("queue unavailable");
+    expect(r.one("SELECT id FROM assignments WHERE reviewer_id=4")).toBeNull();
+    expect(r.one("SELECT id FROM pins WHERE member_id=4")).toBeNull();
   });
   test("전원 제출 조건과 관리자 수동 마감을 구분한다", () => {
     const r = db();

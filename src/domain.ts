@@ -68,18 +68,12 @@ export function normalizeAnswers(
     if (key !== "csrfmiddlewaretoken" && !allowed.has(key))
       throw new DomainError("알 수 없는 답변 항목입니다.");
   return questions.map((q) => {
-    const suffix = (
-      {
-        RATING: "rating",
-        TEXT: "text",
-        SINGLE_CHOICE: "single",
-        MULTIPLE_CHOICE: "multi",
-      } as Row
-    )[q.question_type];
+    const suffix = suffixes[q.question_type];
     const raw = payload[`q_${q.id}_${suffix}`];
     if (partial && (raw == null || raw === "")) return { question: q };
     if (q.question_type === "RATING") {
-      const n = Number(raw);
+      const n =
+        typeof raw === "string" || typeof raw === "number" ? Number(raw) : NaN;
       if (!Number.isInteger(n) || n < 1 || n > 5)
         throw new DomainError("척도는 1~5점 중 선택해 주세요.");
       return { question: q, rating: n };
@@ -94,7 +88,15 @@ export function normalizeAnswers(
       return { question: q, text: raw.trim() };
     }
     const values = raw == null ? [] : Array.isArray(raw) ? raw : [raw];
-    const ids = [...new Set(values.map(Number))];
+    const ids = [
+      ...new Set(
+        values.map((value) =>
+          typeof value === "string" || typeof value === "number"
+            ? Number(value)
+            : NaN,
+        ),
+      ),
+    ];
     if (
       (!partial && ids.length === 0) ||
       (q.question_type === "SINGLE_CHOICE" && ids.length !== 1) ||
@@ -194,7 +196,7 @@ export function enqueue<K extends JobKind>(
   key: string,
 ) {
   repo.run(
-    "INSERT OR IGNORE INTO jobs(kind,payload,dedupe_key,created_at) VALUES (?,?,?,?)",
+    "INSERT INTO jobs(kind,payload,dedupe_key,created_at) VALUES (?,?,?,?) ON CONFLICT(dedupe_key) DO NOTHING",
     kind,
     JSON.stringify(payload),
     key,
@@ -291,20 +293,22 @@ export function addAssignment(
   reviewer: number,
   reviewee: number,
 ) {
-  const c = repo.cycle(cycle);
-  if (!["DRAFT", "ACTIVE"].includes(c.status) || c.is_deadline_passed)
-    throw new DomainError("마감된 회차의 매칭은 수정할 수 없습니다.");
-  if (reviewer === reviewee)
-    throw new DomainError("자기 자신은 리뷰할 수 없습니다.");
-  repo.require("members", reviewer);
-  repo.require("members", reviewee);
-  repo.run(
-    "INSERT OR IGNORE INTO assignments(cycle_id,reviewer_id,reviewee_id) VALUES (?,?,?)",
-    cycle,
-    reviewer,
-    reviewee,
-  );
-  if (c.status === "ACTIVE") pinJob(repo, reviewer, cycle);
+  return repo.transaction(() => {
+    const c = repo.cycle(cycle);
+    if (!["DRAFT", "ACTIVE"].includes(c.status) || c.is_deadline_passed)
+      throw new DomainError("마감된 회차의 매칭은 수정할 수 없습니다.");
+    if (reviewer === reviewee)
+      throw new DomainError("자기 자신은 리뷰할 수 없습니다.");
+    repo.require("members", reviewer);
+    repo.require("members", reviewee);
+    repo.run(
+      "INSERT INTO assignments(cycle_id,reviewer_id,reviewee_id) VALUES (?,?,?) ON CONFLICT(cycle_id,reviewer_id,reviewee_id) DO NOTHING",
+      cycle,
+      reviewer,
+      reviewee,
+    );
+    if (c.status === "ACTIVE") pinJob(repo, reviewer, cycle);
+  });
 }
 export function parseCSV(source: string): string[][] {
   const rows: string[][] = [];
