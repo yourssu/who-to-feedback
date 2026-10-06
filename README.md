@@ -60,3 +60,4 @@ PLAYWRIGHT_CHROMIUM_EXECUTABLE="/Applications/Chromium.app/Contents/MacOS/Chromi
 - [프론트엔드 변경](docs/FRONTEND_MODIFICATION_GUIDE.md)
 - [커스텀 보고서 양식](docs/CUSTOM_HTML_TEMPLATE_GUIDE.md)
 - [리팩토링 결과](docs/REFACTOR_RESULT.md)
+- [성능 개선·CI 검증 결과](docs/PERFORMANCE.md)
