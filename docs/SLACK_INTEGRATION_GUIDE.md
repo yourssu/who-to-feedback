@@ -1,61 +1,32 @@
-# Slack 연동 가이드 (Slack Integration Guide)
+# Slack 연동
 
-본 문서는 피어리뷰 시스템을 실제 Slack Workspace 및 Bot Token과 연동하기 위한 세부 절차 안내서입니다.
+Slack 앱을 만들고 Bot Token을 발급받아 `SLACK_BOT_TOKEN`에 설정합니다. 실제 전송에는 `MOCK_SLACK_MODE=false`가 필요합니다. 개발 기본값은 `true`입니다.
 
----
+## 구현에서 사용하는 메서드와 권한
 
-## 1. Slack App 생성 및 설정 절차
+| 기능 | SDK 메서드 | Bot 권한 |
+|---|---|---|
+| 이메일로 Slack 사용자 찾기 | `users.lookupByEmail` | `users:read.email` |
+| DM 채널 열기 | `conversations.open` | `im:write` |
+| PIN·리마인더·운영 메시지 | `chat.postMessage` | `chat:write` |
+| HTML·PDF 함께 업로드 | `filesUploadV2` | `files:write` |
 
-### 1단계: Slack App 생성
-1. [Slack API 개발자 콘솔](https://api.slack.com/apps)에 접속합니다.
-2. **`Create New App`** ➔ **`From scratch`**를 선택합니다.
-3. App Name(예: `피어리뷰 자동화 봇`)을 입력하고 연동 대상 Workspace를 지정합니다.
+이메일 조회 권한은 [Slack 공식 메서드 문서](https://docs.slack.dev/reference/methods/users.lookupByEmail/)를 기준으로 확인했습니다. 권한 변경 후 워크스페이스에 앱을 다시 설치해야 합니다. 팀원에 유효한 Slack User ID가 있으면 이메일 조회를 생략합니다.
 
-### 2단계: 필수 Bot Token Scopes 4가지 추가
-1. 좌측 메뉴에서 **`OAuth & Permissions`**를 선택합니다.
-2. **`Scopes`** ➔ **`Bot Token Scopes`** 항목에 아래 4개 권한을 추가합니다:
-   - `chat:write`: 사용자에게 PIN 코드 및 알림 메시지 DM 전송
-   - `files:write`: 피어리뷰 결과 리포트 파일 업로드 (`files.upload_v2`)
-   - `im:write`: 사용자 간 1:1 Direct Message 채널 생성
-   - `users:read`: Slack 사용자 정보 및 Member ID 조회
+팀원의 Slack 프로필에서 멤버 ID를 복사해 관리자 팀원 등록 시 입력합니다. 관리자 테스트 DM은 관리자 이메일과 같은 팀원의 Slack 정보를 사용합니다.
 
-### 3단계: Workspace 설치 및 Bot Token 발급
-1. `OAuth & Permissions` 상단의 **`Install to Workspace`** 버튼을 누릅니다.
-2. 접근 권한을 승인한 후 발급된 **`Bot User OAuth Token` (`xoxb-`로 시작)**을 복사합니다.
+## 검증 순서
 
----
+1. 테스트 워크스페이스의 관리자·팀원 정보를 등록합니다.
+2. 관리자 화면에서 ‘관리자 테스트 DM’을 실행합니다.
+3. 작은 테스트 회차를 시작하고 PIN 수신·로그인을 확인합니다.
+4. 리뷰 제출·관리자 마감·HTML/PDF 검토를 완료합니다.
+5. ‘검토 완료 및 발송’을 실행하고 같은 DM에서 두 파일을 다운로드할 수 있는지 확인합니다.
 
-## 2. `.env` 환경 변수 설정
+실제 메시지를 보내는 검증은 대상과 발송 범위를 정한 후 실행합니다. 로컬 업무·UI 테스트는 가상 발송기를 사용하므로 실제 Slack 전달을 입증하지 않습니다.
 
-프로젝트 루트 디렉터리의 `.env` 파일(또는 `.env.example` 복사본)에 발급받은 토큰 및 모드 옵션을 설정합니다.
+## 오류와 재전송
 
-```ini
-# .env 파일 예시
-DJANGO_SECRET_KEY=your-django-secret-key
-DEBUG=True
+명시적 API 실패는 `FAILED`, 네트워크 단절 또는 전송 중 종료로 결과가 불명확하면 `UNKNOWN`입니다. rate limit은 지정된 시간 이후 제한된 횟수로 재시도합니다. SDK 자체의 자동 재시도는 끄고 큐에서 관리합니다.
 
-# Slack API 설정
-SLACK_BOT_TOKEN=xoxb-1234567890-1234567890123-xxxxxx
-MOCK_SLACK_MODE=False
-```
-
-- `MOCK_SLACK_MODE=True`: 실제 Slack DM을 보내지 않고 서버 콘솔/로그에 PIN 코드 및 메시지를 출력합니다.
-- `MOCK_SLACK_MODE=False`: 실제 Slack API를 호출하여 사용자에게 DM 메시지와 결과 리포트 파일이 전송됩니다.
-
----
-
-## 3. 사용자 Slack Member ID 등록
-
-사용자에게 DM 및 결과지를 전달하기 위해 Slack Member ID(`U12345678` 형태)가 필요합니다.
-
-1. Slack 앱에서 팀원의 프로필을 클릭합니다.
-2. 프로필 팝업의 **`더보기 (...)`** ➔ **`멤버 ID 복사`**를 선택합니다.
-3. 관리자 웹 UI (**`/admin-panel/members/`**)에서 팀원 등록/수정 시 해당 멤버 ID를 입력합니다.
-
----
-
-## 4. 연동 테스트
-
-1. 관리자 웹 UI의 **`Slack DM 메시지 전송` (`/admin-panel/messages/send/`)** 페이지로 이동합니다.
-2. 수신 대상을 지정하고 테스트 메시지를 작성하여 전송을 실행합니다.
-3. 대상 사용자의 Slack 앱으로 메시지가 수신되는지 확인합니다.
+‘실패한 DM 재발송’은 `FAILED`만 처리합니다. `UNKNOWN`은 관리자 화면에서 수신 여부를 확인하고 완료 또는 미수신 재전송으로 처리합니다. 보고서는 승인된 생성물 버전·해시와 작업이 일치해야 전송됩니다.

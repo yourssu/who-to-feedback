@@ -16,7 +16,7 @@
     </div>
   </div>
   <div class="login-panel">
-    <a class="auth-brand" href="{% url 'setup_wizard' %}" aria-label="PeerFlow 최초 관리자 설정">
+    <a class="auth-brand" href="{{ url('setup_wizard') }}" aria-label="PeerFlow 최초 관리자 설정">
       <strong>PeerFlow</strong>
       <span>INITIAL ADMIN SETUP</span>
     </a>
@@ -25,7 +25,7 @@
     <h1 class="login-title">관리자 계정 생성</h1>
     <p class="login-copy">시스템 관리를 위한 아이디, 이메일, 비밀번호를 설정해 주세요.</p>
 
-    {% if messages %}
+    {% if (messages | length) %}
       {% for message in messages %}
         <div class="alert alert-{{ message.tags }}" role="status" style="margin-bottom: 16px;">
           {{ message }}
@@ -33,16 +33,16 @@
       {% endfor %}
     {% endif %}
 
-    <form method="post" action="{% url 'setup_wizard' %}">
-      {% csrf_token %}
+    <form method="post" action="{{ url('setup_wizard') }}">
+      <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
       <div class="form-group" style="margin-bottom: 14px;">
         <label class="form-label" for="username">관리자 ID (사용자명)</label>
-        <input class="form-control" id="username" name="username" type="text" value="{{ username|default:'' }}" placeholder="예: admin" required autofocus>
+        <input class="form-control" id="username" name="username" type="text" value="{{ username|fallback('') }}" placeholder="예: admin" required autofocus>
       </div>
 
       <div class="form-group" style="margin-bottom: 14px;">
         <label class="form-label" for="email">이메일 주소</label>
-        <input class="form-control" id="email" name="email" type="email" value="{{ email|default:'' }}" placeholder="admin@yourssu.com" required>
+        <input class="form-control" id="email" name="email" type="email" value="{{ email|fallback('') }}" placeholder="admin@yourssu.com" required>
       </div>
 
       <div class="form-group" style="margin-bottom: 14px;">

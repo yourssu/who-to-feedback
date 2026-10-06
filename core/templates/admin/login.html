@@ -9,13 +9,13 @@
     <div class="login-story-note"><strong>PeerFlow Operation Center</strong><span>관리자 전용 워크스페이스</span></div>
   </div>
   <div class="login-panel">
-    <a class="auth-brand" href="{% url 'login' %}"><strong>PeerFlow</strong><span>YOURSSU ADMIN</span></a>
+    <a class="auth-brand" href="{{ url('login') }}"><strong>PeerFlow</strong><span>YOURSSU ADMIN</span></a>
     <span class="status-pill">관리자 전용</span>
     <h1 class="login-title">관리자 로그인</h1>
-    <p class="login-copy">Django Superuser 계정으로 로그인해 주세요.</p>
+    <p class="login-copy">관리자 계정으로 로그인해 주세요.</p>
     {% if form.errors %}<div class="alert alert-error" role="alert">아이디 또는 비밀번호가 올바르지 않습니다.</div>{% endif %}
-    <form method="post" action="{{ app_path }}">{% csrf_token %}<div class="form-group"><label class="form-label" for="id_username">관리자 아이디</label><input class="form-control" id="id_username" name="username" value="{{ form.username.value|default:'' }}" autocomplete="username" required autofocus></div><div class="form-group"><label class="form-label" for="id_password">비밀번호</label><input class="form-control" id="id_password" type="password" name="password" autocomplete="current-password" required></div><input type="hidden" name="next" value="{{ next }}"><button class="btn btn-primary btn-block" type="submit">관리자 센터 로그인</button></form>
-    <a class="btn btn-ghost btn-block admin-login-back" href="{% url 'login' %}">리뷰어 PIN 로그인으로</a>
+    <form method="post" action="{{ app_path }}"><input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}"><div class="form-group"><label class="form-label" for="id_username">관리자 아이디</label><input class="form-control" id="id_username" name="username" value="{{ form.username.value|fallback('') }}" autocomplete="username" required autofocus></div><div class="form-group"><label class="form-label" for="id_password">비밀번호</label><input class="form-control" id="id_password" type="password" name="password" autocomplete="current-password" required></div><input type="hidden" name="next" value="{{ next }}"><button class="btn btn-primary btn-block" type="submit">관리자 센터 로그인</button></form>
+    <a class="btn btn-ghost btn-block admin-login-back" href="{{ url('login') }}">리뷰어 PIN 로그인으로</a>
   </div>
 </section>
 {% endblock %}

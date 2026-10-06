@@ -296,7 +296,7 @@ body {
   <!-- ========================================== -->
   <section class="slide lavender-page">
     <div class="cover-content">
-      <div class="cover-kicker">{{ cycle.title|default:"2026 YOURSSU PEER-REVIEW REPORT" }}</div>
+      <div class="cover-kicker">{{ cycle.title|fallback("2026 YOURSSU PEER-REVIEW REPORT") }}</div>
       <div class="cover-report-pill">PERSONAL REPORT</div>
 
       <!-- Graphic Brand Mark -->
@@ -308,7 +308,7 @@ body {
 
       <div class="cover-copy">
         <h1>{{ reviewee.name }}님 피어리뷰 리포트</h1>
-        <p>동료의 시선으로 돌아보는 나의 강점과 성장 방향 ({{ reviewee.department|default:"YOURSSU Active Member" }})</p>
+        <p>동료의 시선으로 돌아보는 나의 강점과 성장 방향 ({{ reviewee.department|fallback("YOURSSU Active Member") }})</p>
         <span class="cover-accent"></span>
       </div>
 
@@ -337,12 +337,9 @@ body {
 
     <!-- Keyword Pills -->
     <div class="keyword-zone">
-      <span class="keyword-pill keyword-indigo">#주도적인_실행력</span>
-      <span class="keyword-pill keyword-purple">#끝까지_파고드는_몰입</span>
-      <span class="keyword-pill keyword-gold">#유기적인_성장_동력</span>
-      <span class="keyword-pill keyword-soft">#명확한_피드백_제공</span>
-      <span class="keyword-pill keyword-indigo">#높은_책임감</span>
-      <span class="keyword-pill keyword-purple">#긍정적인_협업_시너지</span>
+      {% for keyword in report_keywords %}
+      <span class="keyword-pill keyword-indigo">#{{ keyword }}</span>
+      {% else %}<span class="muted">선택형 키워드 응답이 없습니다.</span>{% endfor %}
     </div>
 
     <div class="overview-grid">
@@ -355,7 +352,7 @@ body {
             <td style="font-weight: bold; color: var(--ink-strong);">{{ cat.name }}</td>
             <td align="right"><span style="color: var(--primary); font-weight: bold; font-size: 17px;">{{ cat.avg }}점</span> / 5.0점</td>
           </tr>
-          {% empty %}
+          {% else %}
           <tr><td colspan="2" style="color: var(--steel);">카테고리 요약 데이터가 없습니다.</td></tr>
           {% endfor %}
         </table>
@@ -390,11 +387,11 @@ body {
   <!-- ========================================== -->
   <!-- SLIDE 3+: Detailed Question Feedback Pages -->
   <!-- ========================================== -->
-  {% for q in questions_data %}
+  {% for q in question_pages %}
   <section class="slide">
     <div class="page-heading">
       <div class="eyebrow">02. DETAILED QUESTION FEEDBACK</div>
-      <h2>Q{{ q.order }}. {{ q.category }}</h2>
+      <h2>Q{{ q.order }}. {{ q.category }}{% if q.continued %} (계속){% endif %}</h2>
     </div>
 
     <div style="position: absolute; left: 60px; right: 60px; top: 160px;">
@@ -431,7 +428,7 @@ body {
           <h3>💬 익명 피드백</h3>
           <div class="comment-body">"{{ ans }}"</div>
         </div>
-        {% empty %}
+        {% else %}
         <p style="color: var(--steel); font-style: italic; font-size: 16px; grid-column: span 2;">작성된 주관식 피드백이 없습니다.</p>
         {% endfor %}
       </div>
@@ -446,7 +443,7 @@ body {
             <span class="keyword-pill keyword-soft" style="height: 32px; font-size: 13px;">{{ opt.text }}</span>
             <span style="font-size: 15px; font-weight: bold; color: var(--ink-strong);">{{ opt.percentage }}% ({{ opt.count }}명)</span>
           </div>
-          {% empty %}
+          {% else %}
           <p style="color: var(--steel); font-size: 14px;">선택지 데이터가 없습니다.</p>
           {% endfor %}
         </div>
@@ -468,7 +465,7 @@ body {
     <footer class="page-footer">
       <span>Yourssu HR · 2026 Peer Review</span>
       <span>Question Feedback</span>
-      <span>Page 0{{ forloop.counter|add:2 }}</span>
+      <span>Page 0{{ loop.index|add(2) }}</span>
     </footer>
   </section>
   {% endfor %}

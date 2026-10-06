@@ -3,21 +3,21 @@
 {% block content %}
 <header class="page-head review-page-head">
   <div><span class="eyebrow">{{ cycle.title }}</span><h1 class="page-title">{{ assignment.reviewee.name }}님 리뷰</h1><p class="page-description">{% if is_locked %}마감된 리뷰의 답변은 수정할 수 없어요.{% else %}총 {{ questions_data|length }}개의 질문에 차례대로 답해 주세요.{% endif %}</p></div>
-  <a class="btn btn-ghost" href="{% url 'review_dashboard' %}">목록으로</a>
+  <a class="btn btn-ghost" href="{{ url('review_dashboard') }}">목록으로</a>
 </header>
 {% if is_locked %}
 <section class="card card-raised empty-state locked-state">
   <span class="status-pill status-pill-warning">수정 마감</span>
-  <h2 class="card-title">{{ lock_title|default:'제출한 리뷰가 잠겼어요' }}</h2>
-  <p class="card-subtitle">{{ lock_message|default:'회차 마감 이후에는 제출한 답변을 수정할 수 없습니다.' }}</p>
-  <a class="btn btn-primary" href="{% url 'review_dashboard' %}">내 리뷰로 돌아가기</a>
+  <h2 class="card-title">{{ lock_title|fallback('제출한 리뷰가 잠겼어요') }}</h2>
+  <p class="card-subtitle">{{ lock_message|fallback('회차 마감 이후에는 제출한 답변을 수정할 수 없습니다.') }}</p>
+  <a class="btn btn-primary" href="{{ url('review_dashboard') }}">내 리뷰로 돌아가기</a>
 </section>
 {% else %}
 <form method="post" class="wizard" id="reviewForm" data-review-wizard data-assignment-id="{{ assignment.id }}">
-  {% csrf_token %}
+  <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
   <div class="wizard-progress-shell"><div class="progress-label"><span>작성 진행률</span><span><span data-current-step>0</span> / {{ questions_data|length }}</span></div><div class="progress"><span data-wizard-progress style="width:0"></span></div></div>
   <section class="wizard-overview card card-raised wizard-surface">
-    <a class="r-back" href="{% url 'review_dashboard' %}">‹&nbsp;&nbsp;대시보드</a>
+    <a class="r-back" href="{{ url('review_dashboard') }}">‹&nbsp;&nbsp;대시보드</a>
     <p class="question-kicker question-kicker-spaced">리뷰 작성 안내 · 총 {{ questions_data|length }}문항</p>
     <h2 class="question-title">{{ questions_data|length }}개의 질문에 답해 주세요</h2>
     <p class="r-help">답변을 차례대로 작성한 뒤 마지막 단계에서 제출합니다.</p>
@@ -25,8 +25,8 @@
   </section>
   {% for item in questions_data %}
   <section class="wizard-step question-box wizard-surface">
-    {% if forloop.first %}<a class="r-back" href="{% url 'review_dashboard' %}">‹&nbsp;&nbsp;대시보드</a>{% else %}<button class="r-back btn-ghost" type="button" data-wizard-prev>‹&nbsp;&nbsp;이전 질문</button>{% endif %}
-    <p class="question-kicker">{{ forloop.counter }} / {{ questions_data|length }} · {{ item.question.question_type }}</p>
+    {% if loop.first %}<a class="r-back" href="{{ url('review_dashboard') }}">‹&nbsp;&nbsp;대시보드</a>{% else %}<button class="r-back btn-ghost" type="button" data-wizard-prev>‹&nbsp;&nbsp;이전 질문</button>{% endif %}
+    <p class="question-kicker">{{ loop.index }} / {{ questions_data|length }} · {{ item.question.question_type }}</p>
     <h2 class="question-title">{{ item.question.content }}</h2>
     {% if item.question.image %}
     <div class="question-image-box" style="margin: 12px 0 16px 0;">
@@ -57,10 +57,10 @@
     {% endif %}
     <div class="wizard-actions">
       {% if item.question.question_type == 'TEXT' %}<button class="btn btn-tonal" type="button" data-save-draft>임시 저장</button>{% endif %}
-      {% if forloop.last %}<button class="btn btn-primary" type="submit">{% if assignment.is_submitted %}수정 내용 저장{% else %}리뷰 제출{% endif %}</button>{% else %}<button class="btn btn-primary" type="button" data-wizard-next>저장하고 다음</button>{% endif %}
+      {% if loop.last %}<button class="btn btn-primary" type="submit">{% if assignment.is_submitted %}수정 내용 저장{% else %}리뷰 제출{% endif %}</button>{% else %}<button class="btn btn-primary" type="button" data-wizard-next>저장하고 다음</button>{% endif %}
     </div>
   </section>
-  {% empty %}<div class="card empty-state wizard-surface">등록된 질문이 없습니다. 관리자에게 문의해 주세요.</div>{% endfor %}
+  {% else %}<div class="card empty-state wizard-surface">등록된 질문이 없습니다. 관리자에게 문의해 주세요.</div>{% endfor %}
 </form>
 {% endif %}
 {% endblock %}

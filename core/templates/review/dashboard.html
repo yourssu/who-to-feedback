@@ -21,10 +21,10 @@
     {% for item in assignments %}
     <article class="r-card{% if not item.assignment.is_submitted %} r-card-active{% endif %}">
       <div class="r-card-top"><strong>{{ item.assignment.reviewee.name }}님 리뷰</strong><span class="badge {% if item.assignment.is_submitted %}badge-success{% else %}badge-warning{% endif %}">{% if item.assignment.is_submitted %}제출 완료{% else %}작성 필요{% endif %}</span></div>
-      <span>{% if item.assignment.is_submitted %}모든 질문에 답변했어요{% else %}질문 {{ cycle.questions.count }}개 · 마감 {{ cycle.end_at|date:'m.d' }}{% endif %}</span>
-      {% if not item.assignment.is_submitted %}{% if can_write %}<a class="card-link" href="{% url 'review_form' assignment_id=item.assignment.id %}">리뷰 작성하기 <span aria-hidden="true">→</span></a>{% else %}<small>작성 마감</small>{% endif %}{% else %}<small>제출한 리뷰</small>{% endif %}
+      <span>{% if item.assignment.is_submitted %}모든 질문에 답변했어요{% else %}질문 {{ (cycle.questions | length) }}개 · 마감 {{ cycle.end_at|date('m.d') }}{% endif %}</span>
+      {% if not item.assignment.is_submitted %}{% if can_write %}<a class="card-link" href="{{ url('review_form', {assignment_id: item.assignment.id}) }}">리뷰 작성하기 <span aria-hidden="true">→</span></a>{% else %}<small>작성 마감</small>{% endif %}{% else %}<small>제출한 리뷰</small>{% endif %}
     </article>
-    {% empty %}<div class="card empty-state">현재 배정된 리뷰가 없어요.</div>{% endfor %}
+    {% else %}<div class="card empty-state">현재 배정된 리뷰가 없어요.</div>{% endfor %}
   </div>
   {% if is_all_completed %}<div class="banner banner-success">관리자 검토가 끝나면 결과를 Slack DM으로 안내해 드려요.</div>{% endif %}
 </section>
@@ -37,17 +37,17 @@
   <div class="dashboard-summary card">
     <div><span class="summary-label">완료한 리뷰</span><strong>{{ submitted_count }}<small> / {{ assignments|length }}</small></strong></div>
     <div class="summary-progress"><div class="progress-label"><span>전체 진행률</span><strong>{{ completion_rate }}%</strong></div><div class="progress" role="progressbar" aria-label="리뷰 완료율" aria-valuenow="{{ completion_rate }}" aria-valuemin="0" aria-valuemax="100"><span style="width:{{ completion_rate }}%"></span></div></div>
-    <p>{% if is_all_completed %}모든 리뷰를 제출했어요. 결과가 준비되면 Slack으로 알려드릴게요.{% else %}작성 중인 답변은 임시 저장할 수 있어요. 마감은 {{ cycle.end_at|date:'Y.m.d H:i' }}입니다.{% endif %}</p>
+    <p>{% if is_all_completed %}모든 리뷰를 제출했어요. 결과가 준비되면 Slack으로 알려드릴게요.{% else %}작성 중인 답변은 임시 저장할 수 있어요. 마감은 {{ cycle.end_at|date('Y.m.d H:i') }}입니다.{% endif %}</p>
   </div>
   <h2 class="dashboard-section-title">배정된 리뷰</h2>
   <div class="dashboard-card-grid">
     {% for item in assignments %}
     <article class="r-card{% if not item.assignment.is_submitted %} r-card-active{% endif %}">
       <div class="r-card-top"><strong>{{ item.assignment.reviewee.name }}님 리뷰</strong><span class="badge {% if item.assignment.is_submitted %}badge-success{% else %}badge-warning{% endif %}">{% if item.assignment.is_submitted %}완료{% else %}작성 필요{% endif %}</span></div>
-      <span>{{ cycle.questions.count }}개의 질문 · {{ cycle.title }}</span>
-      {% if not item.assignment.is_submitted %}{% if can_write %}<a class="card-link" href="{% url 'review_form' assignment_id=item.assignment.id %}">리뷰 작성하기 <span aria-hidden="true">→</span></a>{% else %}<small>작성 마감</small>{% endif %}{% else %}<small>제출 완료</small>{% endif %}
+      <span>{{ (cycle.questions | length) }}개의 질문 · {{ cycle.title }}</span>
+      {% if not item.assignment.is_submitted %}{% if can_write %}<a class="card-link" href="{{ url('review_form', {assignment_id: item.assignment.id}) }}">리뷰 작성하기 <span aria-hidden="true">→</span></a>{% else %}<small>작성 마감</small>{% endif %}{% else %}<small>제출 완료</small>{% endif %}
     </article>
-    {% empty %}<div class="card empty-state">현재 배정된 리뷰가 없어요.</div>{% endfor %}
+    {% else %}<div class="card empty-state">현재 배정된 리뷰가 없어요.</div>{% endfor %}
   </div>
 </section>
 {% else %}

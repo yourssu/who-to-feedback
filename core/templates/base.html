@@ -1,4 +1,3 @@
-{% load static %}
 <!doctype html>
 <html lang="ko">
 <head>
@@ -7,7 +6,7 @@
   <meta name="theme-color" content="#2B2D6E">
   <title>{% block title %}PeerFlow{% endblock %}</title>
   <script>document.documentElement.classList.add('js');try{var t=localStorage.getItem('peerflow-theme');if(t)document.documentElement.dataset.theme=t;else if(matchMedia('(prefers-color-scheme:dark)').matches)document.documentElement.dataset.theme='dark'}catch(e){}</script>
-  <link rel="stylesheet" href="{% static 'css/style.css' %}">
+  <link rel="stylesheet" href="/static/css/style.css">
   <style>
     /* mobile-only: only show on mobile (max-width: 768px) */
     @media (min-width: 769px) {
@@ -22,39 +21,39 @@
 <body class="{% block body_class %}reviewer-app{% endblock %}">
   <div class="app-shell">
     <aside class="sidebar">
-      <a class="brand" href="{% url 'review_dashboard' %}" aria-label="PeerFlow 홈">
+      <a class="brand" href="{{ url('review_dashboard') }}" aria-label="PeerFlow 홈">
         <strong>PeerFlow</strong>
         <span>YOURSSU PEER REVIEW</span>
       </a>
       <nav class="side-nav" aria-label="리뷰어 메뉴">
-        <a class="side-link {% if request.resolver_match.url_name == 'review_dashboard' or request.resolver_match.url_name == 'review_form' %}active{% endif %}" href="{% url 'review_dashboard' %}"><span class="nav-icon" aria-hidden="true">□</span>내 리뷰</a>
+        <a class="side-link {% if request.resolver_match.url_name == 'review_dashboard' or request.resolver_match.url_name == 'review_form' %}active{% endif %}" href="{{ url('review_dashboard') }}"><span class="nav-icon" aria-hidden="true">□</span>내 리뷰</a>
         <span class="side-link" aria-disabled="true" title="알림 센터는 준비 중입니다"><span class="nav-icon" aria-hidden="true">○</span>알림</span>
       </nav>
       <div class="side-bottom">
         {% if request.session.member_id %}
-        <div class="user-chip"><strong>{{ request.session.member_name|default:'리뷰어' }}</strong><span>{{ request.session.member_email|default:'Slack 인증 완료' }}</span></div>
+        <div class="user-chip"><strong>{{ request.session.member_name|fallback('리뷰어') }}</strong><span>{{ request.session.member_email|fallback('Slack 인증 완료') }}</span></div>
         {% endif %}
         <div class="side-actions">
           <button class="icon-btn" type="button" data-theme-toggle aria-label="다크 모드로 전환" aria-pressed="false">◐</button>
-          {% if request.session.member_id %}<a class="icon-btn" href="{% url 'logout' %}" aria-label="로그아웃">↗</a>{% endif %}
+          {% if request.session.member_id %}<a class="icon-btn" href="{{ url('logout') }}" aria-label="로그아웃">↗</a>{% endif %}
         </div>
       </div>
     </aside>
     <header class="mobile-bar">
-      <a class="mobile-brand" href="{% url 'review_dashboard' %}">PeerFlow</a>
+      <a class="mobile-brand" href="{{ url('review_dashboard') }}">PeerFlow</a>
       <div class="mobile-actions">
         <button class="icon-btn" type="button" data-theme-toggle aria-label="다크 모드로 전환" aria-pressed="false">◐</button>
-        {% if request.session.member_id %}<a class="icon-btn" href="{% url 'logout' %}" aria-label="로그아웃">↗</a>{% endif %}
+        {% if request.session.member_id %}<a class="icon-btn" href="{{ url('logout') }}" aria-label="로그아웃">↗</a>{% endif %}
       </div>
     </header>
     <main class="page">
       <div class="page-inner">
-        {% block flash_messages %}{% if messages %}{% for message in messages %}<div class="alert alert-{{ message.tags }}" role="status">{{ message }}</div>{% endfor %}{% endif %}{% endblock %}
+        {% block flash_messages %}{% if (messages | length) %}{% for message in messages %}<div class="alert alert-{{ message.tags }}" role="status">{{ message }}</div>{% endfor %}{% endif %}{% endblock %}
         {% block content %}{% endblock %}
       </div>
     </main>
   </div>
-  <script src="{% static 'js/app.js' %}"></script>
+  <script src="/static/js/app.js"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

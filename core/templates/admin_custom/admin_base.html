@@ -1,4 +1,3 @@
-{% load static %}
 <!doctype html>
 <html lang="ko">
 <head>
@@ -7,61 +6,61 @@
   <meta name="theme-color" content="#2B2D6E">
   <title>{% block title %}PeerFlow Admin{% endblock %}</title>
   <script>document.documentElement.classList.add('js');try{var t=localStorage.getItem('peerflow-theme');if(t)document.documentElement.dataset.theme=t;else if(matchMedia('(prefers-color-scheme:dark)').matches)document.documentElement.dataset.theme='dark'}catch(e){}</script>
-  <link rel="stylesheet" href="{% static 'css/style.css' %}">
+  <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body class="admin-app">
   <div class="app-shell">
     <aside class="sidebar">
-      <a class="brand" href="{% url 'admin_dashboard' %}" aria-label="PeerFlow 관리자 홈"><strong>PeerFlow</strong><span>YOURSSU ADMIN</span></a>
-{% with current_cycle=cycle|default:latest_cycle %}
+      <a class="brand" href="{{ url('admin_dashboard') }}" aria-label="PeerFlow 관리자 홈"><strong>PeerFlow</strong><span>YOURSSU ADMIN</span></a>
+{% set current_cycle=cycle|fallback(latest_cycle) %}
       <nav class="side-nav" aria-label="관리자 메뉴">
-        <a class="side-link {% if request.resolver_match.url_name == 'admin_dashboard' %}active{% endif %}" href="{% url 'admin_dashboard' %}"><span class="nav-icon" aria-hidden="true">◇</span>Overview</a>
-        <a class="side-link {% if active_menu == 'members' %}active{% endif %}" href="{% url 'admin_members' %}"><span class="nav-icon" aria-hidden="true">○</span>팀원 관리</a>
-        <a class="side-link {% if active_menu == 'validation' %}active{% endif %}" href="{% if current_cycle %}{% url 'admin_validation_detail' cycle_id=current_cycle.id %}{% else %}{% url 'admin_validation' %}{% endif %}"><span class="nav-icon" aria-hidden="true">✓</span>데이터 검증</a>
+        <a class="side-link {% if request.resolver_match.url_name == 'admin_dashboard' %}active{% endif %}" href="{{ url('admin_dashboard') }}"><span class="nav-icon" aria-hidden="true">◇</span>Overview</a>
+        <a class="side-link {% if active_menu == 'members' %}active{% endif %}" href="{{ url('admin_members') }}"><span class="nav-icon" aria-hidden="true">○</span>팀원 관리</a>
+        <a class="side-link {% if active_menu == 'validation' %}active{% endif %}" href="{% if current_cycle %}{{ url('admin_validation_detail', {cycle_id: current_cycle.id}) }}{% else %}{{ url('admin_validation') }}{% endif %}"><span class="nav-icon" aria-hidden="true">✓</span>데이터 검증</a>
         {% if current_cycle %}
-          <a class="side-link {% if request.resolver_match.url_name == 'admin_questions' %}active{% endif %}" href="{% url 'admin_questions' cycle_id=current_cycle.id %}"><span class="nav-icon" aria-hidden="true">□</span>질문지 제작</a>
-          <a class="side-link {% if request.resolver_match.url_name == 'admin_assignments' %}active{% endif %}" href="{% url 'admin_assignments' cycle_id=current_cycle.id %}"><span class="nav-icon" aria-hidden="true">↔</span>리뷰 매칭</a>
+          <a class="side-link {% if request.resolver_match.url_name == 'admin_questions' %}active{% endif %}" href="{{ url('admin_questions', {cycle_id: current_cycle.id}) }}"><span class="nav-icon" aria-hidden="true">□</span>질문지 제작</a>
+          <a class="side-link {% if request.resolver_match.url_name == 'admin_assignments' %}active{% endif %}" href="{{ url('admin_assignments', {cycle_id: current_cycle.id}) }}"><span class="nav-icon" aria-hidden="true">↔</span>리뷰 매칭</a>
         {% else %}
           <span class="side-link" aria-disabled="true"><span class="nav-icon" aria-hidden="true">□</span>질문지 제작</span>
           <span class="side-link" aria-disabled="true"><span class="nav-icon" aria-hidden="true">↔</span>리뷰 매칭</span>
         {% endif %}
-        <a class="side-link {% if active_menu == 'status' or request.resolver_match.url_name == 'admin_status_detail' %}active{% endif %}" href="{% url 'admin_status' %}"><span class="nav-icon" aria-hidden="true">◫</span>진행 상태</a>
-        {% if current_cycle %}<a class="side-link {% if request.resolver_match.url_name == 'admin_reports' or request.resolver_match.url_name == 'admin_delivery_checklist' %}active{% endif %}" href="{% url 'admin_reports' cycle_id=current_cycle.id %}"><span class="nav-icon" aria-hidden="true">▤</span>리포트 관리</a>{% else %}<span class="side-link" aria-disabled="true"><span class="nav-icon" aria-hidden="true">▤</span>리포트 관리</span>{% endif %}
-        <a class="side-link {% if active_menu == 'messages' %}active{% endif %}" href="{% url 'admin_send_message' %}"><span class="nav-icon" aria-hidden="true">↗</span>Slack DM</a>
+        <a class="side-link {% if active_menu == 'status' or request.resolver_match.url_name == 'admin_status_detail' %}active{% endif %}" href="{{ url('admin_status') }}"><span class="nav-icon" aria-hidden="true">◫</span>진행 상태</a>
+        {% if current_cycle %}<a class="side-link {% if request.resolver_match.url_name == 'admin_reports' or request.resolver_match.url_name == 'admin_delivery_checklist' %}active{% endif %}" href="{{ url('admin_reports', {cycle_id: current_cycle.id}) }}"><span class="nav-icon" aria-hidden="true">▤</span>리포트 관리</a>{% else %}<span class="side-link" aria-disabled="true"><span class="nav-icon" aria-hidden="true">▤</span>리포트 관리</span>{% endif %}
+        <a class="side-link {% if active_menu == 'messages' %}active{% endif %}" href="{{ url('admin_send_message') }}"><span class="nav-icon" aria-hidden="true">↗</span>Slack DM</a>
       </nav>
       <div class="side-bottom">
         <div class="user-chip"><strong>PeerFlow 관리자</strong><span>{{ request.user.username }}</span></div>
-        <div class="side-actions"><button class="icon-btn" type="button" data-theme-toggle aria-label="다크 모드로 전환" aria-pressed="false">◐</button><a class="icon-btn" href="{% url 'logout' %}" aria-label="로그아웃" title="로그아웃">⎋</a></div>
+        <div class="side-actions"><button class="icon-btn" type="button" data-theme-toggle aria-label="다크 모드로 전환" aria-pressed="false">◐</button><a class="icon-btn" href="{{ url('logout') }}" aria-label="로그아웃" title="로그아웃">⎋</a></div>
       </div>
     </aside>
     <header class="mobile-bar">
-      <a class="mobile-brand" href="{% url 'admin_dashboard' %}">PeerFlow <small>Admin</small></a>
-      <div class="mobile-actions"><button class="icon-btn" type="button" data-theme-toggle aria-label="다크 모드로 전환" aria-pressed="false">◐</button><a class="icon-btn" href="{% url 'logout' %}" aria-label="로그아웃" title="로그아웃">⎋</a></div>
+      <a class="mobile-brand" href="{{ url('admin_dashboard') }}">PeerFlow <small>Admin</small></a>
+      <div class="mobile-actions"><button class="icon-btn" type="button" data-theme-toggle aria-label="다크 모드로 전환" aria-pressed="false">◐</button><a class="icon-btn" href="{{ url('logout') }}" aria-label="로그아웃" title="로그아웃">⎋</a></div>
 
     </header>
     <main class="page">
       <div class="page-inner">
         <nav class="mobile-admin-nav mobile-only" aria-label="모바일 관리자 메뉴">
-          <a class="{% if request.resolver_match.url_name == 'admin_dashboard' %}active{% endif %}" href="{% url 'admin_dashboard' %}">Overview</a>
-          <a class="{% if active_menu == 'members' %}active{% endif %}" href="{% url 'admin_members' %}">팀원</a>
-          <a class="{% if active_menu == 'validation' %}active{% endif %}" href="{% if current_cycle %}{% url 'admin_validation_detail' cycle_id=current_cycle.id %}{% else %}{% url 'admin_validation' %}{% endif %}">검증</a>
+          <a class="{% if request.resolver_match.url_name == 'admin_dashboard' %}active{% endif %}" href="{{ url('admin_dashboard') }}">Overview</a>
+          <a class="{% if active_menu == 'members' %}active{% endif %}" href="{{ url('admin_members') }}">팀원</a>
+          <a class="{% if active_menu == 'validation' %}active{% endif %}" href="{% if current_cycle %}{{ url('admin_validation_detail', {cycle_id: current_cycle.id}) }}{% else %}{{ url('admin_validation') }}{% endif %}">검증</a>
           {% if current_cycle %}
-            <a class="{% if request.resolver_match.url_name == 'admin_questions' %}active{% endif %}" href="{% url 'admin_questions' cycle_id=current_cycle.id %}">질문지</a>
-            <a class="{% if request.resolver_match.url_name == 'admin_assignments' %}active{% endif %}" href="{% url 'admin_assignments' cycle_id=current_cycle.id %}">매칭</a>
+            <a class="{% if request.resolver_match.url_name == 'admin_questions' %}active{% endif %}" href="{{ url('admin_questions', {cycle_id: current_cycle.id}) }}">질문지</a>
+            <a class="{% if request.resolver_match.url_name == 'admin_assignments' %}active{% endif %}" href="{{ url('admin_assignments', {cycle_id: current_cycle.id}) }}">매칭</a>
           {% else %}
             <span aria-disabled="true">질문지</span><span aria-disabled="true">매칭</span>
           {% endif %}
-          <a class="{% if active_menu == 'status' or request.resolver_match.url_name == 'admin_status_detail' %}active{% endif %}" href="{% url 'admin_status' %}">진행</a>
-          {% if current_cycle %}<a class="{% if request.resolver_match.url_name == 'admin_reports' or request.resolver_match.url_name == 'admin_delivery_checklist' %}active{% endif %}" href="{% url 'admin_reports' cycle_id=current_cycle.id %}">리포트</a>{% else %}<span aria-disabled="true">리포트</span>{% endif %}
-          <a class="{% if active_menu == 'messages' %}active{% endif %}" href="{% url 'admin_send_message' %}">Slack DM</a>
+          <a class="{% if active_menu == 'status' or request.resolver_match.url_name == 'admin_status_detail' %}active{% endif %}" href="{{ url('admin_status') }}">진행</a>
+          {% if current_cycle %}<a class="{% if request.resolver_match.url_name == 'admin_reports' or request.resolver_match.url_name == 'admin_delivery_checklist' %}active{% endif %}" href="{{ url('admin_reports', {cycle_id: current_cycle.id}) }}">리포트</a>{% else %}<span aria-disabled="true">리포트</span>{% endif %}
+          <a class="{% if active_menu == 'messages' %}active{% endif %}" href="{{ url('admin_send_message') }}">Slack DM</a>
         </nav>
-{% endwith %}
-        {% if messages %}{% for message in messages %}<div class="alert alert-{{ message.tags }}" role="status">{{ message }}</div>{% endfor %}{% endif %}
+
+        {% if (messages | length) %}{% for message in messages %}<div class="alert alert-{{ message.tags }}" role="status">{{ message }}</div>{% endfor %}{% endif %}
         {% block admin_content %}{% endblock %}
       </div>
     </main>
   </div>
-  <script src="{% static 'js/app.js' %}"></script>
+  <script src="/static/js/app.js"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

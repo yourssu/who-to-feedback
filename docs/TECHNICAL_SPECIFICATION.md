@@ -1,165 +1,51 @@
-# PeerFlow 피어리뷰 시스템 통합 기술 명세서 (Technical Specification)
+# 구현 구조와 업무 규칙
 
-본 문서는 **Django 기반 익명 피어리뷰 및 AI/자동화 리포트 생성 시스템 (PeerFlow)**의 전체 시스템 아키텍처, 데이터 모델, 서비스 계층, 권한/보안 체계, 리포트 파이프라인 및 URL 라우팅 명세를 다룹니다.
+브라우저 요청은 Hono의 세션·CSRF·권한 검사를 거쳐 기능별 라우트로 전달됩니다. 업무 서비스가 SQLite를 읽고 변경하며 Nunjucks가 기존 웹 화면을 렌더링합니다. 생성 요청은 SQLite 큐로 등록하고 작업 실행기가 HTML·PDF·Slack을 순서대로 처리합니다.
 
----
+| 경로 | 역할 |
+|---|---|
+| `src/index.ts` | Bun 서버, 큐 실행, 종료 처리 |
+| `src/app.ts`, `src/http/` | 공통 HTTP·세션·CSRF·오류 처리, 화면 계약 |
+| `src/routes/` | 인증, 리뷰어, 회차, 팀원, 문항, 매칭, 진행, 보고서, 데이터 검증, 메시지 |
+| `src/db.ts` | SQL repository, 즉시 트랜잭션, 화면용 조회 |
+| `src/schema.ts`, `src/migrations.ts` | 초기 스키마와 순서가 있는 Bun DB 변경 |
+| `src/models.ts`, `src/job-payloads.ts` | 도메인 타입, 생성물 버전, 작업 payload 검증 |
+| `src/domain.ts` | 회차, PIN, 매칭, 답변 검증, 원자적 제출, CSV |
+| `src/reports.ts` | 익명 집계, SVG 차트, HTML 생성, 승인 |
+| `src/reporting/` | 피드백 페이지 분할, 인쇄 스타일, TS Chromium 작업 프로세스 |
+| `src/pdf.ts` | 입력/출력 크기 제한과 변환 제한 시간 |
+| `src/jobs.ts`, `src/deliveries.ts` | 작업 복구, Slack 전달, 관리자 수신 결과 확정 |
+| `core/templates`, `core/static` | Nunjucks 화면과 기존 CSS·JS·폰트·정적 미리보기 |
 
-## 1. 시스템 아키텍처 개요 (Architecture Overview)
+## 상태와 쓰기 규칙
 
-PeerFlow 백엔드는 MVC(Model-View-Controller, Django MVT) 패턴과 독립된 **서비스 아키텍처(Service Layer)**를 채택하여 백엔드 비즈니스 로직, 데이터 검증, 리포트 생성 엔진, Slack 메시징 서비스를 모듈화하였습니다.
+- `DRAFT`: 문항·선택지·매칭을 준비합니다. 문항·매칭·객관식 선택지가 있어야 시작할 수 있습니다.
+- `ACTIVE`: PIN 로그인, 임시 저장, 제출이 가능합니다. 문항은 잠기며 미제출 매칭만 변경할 수 있습니다.
+- `COMPLETED`: 관리자 수동 마감 또는 전원 제출 조건의 생성 액션으로 전환합니다. HTML·PDF를 생성하고 검토합니다.
+- `CLOSED`: 모든 수신자 보고서의 발송 성공 또는 관리자의 수신 확인이 기록된 경우에만 전환합니다.
 
-```mermaid
-graph TD
-    Client[리뷰어 / 관리자 클라이언트] --> DjangoURL[Django URL Router (core/urls.py)]
-    DjangoURL --> AdminViews[관리자 센터 뷰 (admin_views.py)]
-    DjangoURL --> ReviewViews[리뷰어 폼/대시보드 뷰 (review_views.py)]
-    
-    AdminViews --> AuthDecorator[@superuser_required 데코레이터]
-    
-    AdminViews --> ValService[DataValidationService (사전검증/정규화)]
-    AdminViews --> LayoutService[LayoutCheckService (자동 레이아웃 검수)]
-    AdminViews --> ReportServices[ReportService / PDFReportService / PPTReportService (HTML 리포트 엔진)]
-    AdminViews --> SlackService[SlackService (PIN/독촉/리포트 DM)]
-    
-    ValService --> ORM[(SQLite / Django ORM DB)]
-    LayoutService --> ORM
-    ReportServices --> MediaStore[(Media Storage /reports_pdf/)]
-```
+마감 시각 경과는 새 답변을 차단하지만 회차를 자동 전환하지 않습니다. 제출은 모든 문항의 답변·선택지·매칭 상태를 하나의 즉시 트랜잭션에 저장합니다. 부분 실패 시 전부 롤백됩니다. 제출한 답변은 수정할 수 없고 리뷰어는 자기 회차의 자기 매칭에만 접근할 수 있습니다.
 
----
+관리자는 Argon2id 비밀번호와 서버 세션으로 인증합니다. 리뷰어 PIN은 회차 간 중복되지 않게 발급하며 ACTIVE 회차에서만 유효합니다. 인증 실패 제한은 세션 쿠키와 독립적으로 저장합니다. 변경 요청은 CSRF와 Origin 검사를 거칩니다.
 
-## 2. 데이터베이스 ORM 스키마 명세 (`core/models.py`)
+## 보고서와 익명성
 
-시스템은 총 **10개의 데이터 모델**로 구성되어 있습니다.
+제출된 리뷰의 제외되지 않은 답변만 집계합니다. 척도는 1~5 정수, 서술형은 최대 2,000자이며 선택지는 해당 문항에 속한 값만 허용합니다. 선택률의 분모는 수신자의 제출 리뷰 수입니다. 보고서 DTO에는 작성자나 매칭 식별자를 포함하지 않고 서술형은 결정적 순서로 정렬합니다.
 
-### 1) `Member` (팀원 정보 및 권한)
-- `name`: 성명 (CharField, max_length=50)
-- `email`: 이메일 주소 (EmailField, unique=True)
-- `slack_user_id`: Slack User ID (CharField, max_length=50)
-- `department`: 소속 부서 (CharField, max_length=100)
-- `role`: 권한 역할 (`ADMIN` | `MEMBER`, CharField)
-- `normalized_name`: 정규화 병합된 이름 (CharField, blank=True)
+HTML의 `revision`과 `content_hash`를 저장하고 승인 시 `approved_hash`를 연결합니다. 발송 payload에도 생성물 버전과 해시를 넣어 승인받은 파일만 전송합니다. 같은 내용 재생성은 이력을 보존합니다. 변경된 내용은 PDF와 승인을 무효화하고 새 버전으로 생성합니다. 발송 처리 중이거나 수신 확인이 필요한 생성물의 변경은 차단합니다.
 
-### 2) `ReviewCycle` (피어리뷰 회차 관리)
-- `title`: 회차명 (CharField, max_length=200)
-- `start_at`: 시작 일시 (DateTimeField)
-- `end_at`: 마감 일시 (DateTimeField)
-- `status`: 진행 상태 (`DRAFT` | `ACTIVE` | `COMPLETED` | `CLOSED`)
-- `auto_reminder_enabled`: 자동 독촉 활성화 여부 (BooleanField, default=True)
-- `auto_reminder_time`: 자동 독촉 시각 (TimeField, default="10:00")
-- `version`: 템플릿/문항 버전 (CharField, default="v1")
-- **프로퍼티**: `completion_rate`, `is_all_submitted`, `is_deadline_passed`, `is_question_locked`
+레이아웃 사전 점검은 긴 답변·많은 선택지의 검수 필요성을 알리는 규칙입니다. 실제 시각 검수를 대체하지 않습니다. PDF 디자인은 전용 템플릿·인쇄 스타일로 교체할 수 있습니다.
 
-### 3) `ReviewCycleVersionLog` (회차 버전 변경 이력)
-- `cycle`: FK `ReviewCycle` (CASCADE)
-- `version`: 버전 (CharField, max_length=10)
-- `changed_summary`: 변경 내용 요약 (TextField)
-- `created_at`: 기록 일시 (DateTimeField)
+## 스키마와 복구
 
-### 4) `ReviewQuestion` (리뷰 질문 문항)
-- `cycle`: FK `ReviewCycle` (CASCADE)
-- `order`: 문항 순서 (PositiveIntegerField)
-- `question_type`: 문항 유형 (`RATING` | `TEXT` | `SINGLE_CHOICE` | `MULTIPLE_CHOICE`)
-- `scale_type`: 척도 유형 (`NUMERIC_5` | `TEXT_5`)
-- `content`: 질문 내용 (TextField)
+기존 Django DB는 이관하지 않습니다. 신규 Bun DB는 스키마 변경을 순서대로 트랜잭션에 적용하고 `schema_version`에 기록합니다. 앱보다 새로운 스키마는 열지 않습니다.
 
-### 5) `QuestionOption` (객관식 선택지)
-- `question`: FK `ReviewQuestion` (CASCADE)
-- `option_text`: 선택지 텍스트 (CharField, max_length=200)
-- `order`: 선택지 순서 (PositiveIntegerField)
+생성·PDF 작업은 재시작 시 다시 처리하고 Slack 전송 중 종료된 작업은 `UNKNOWN`으로 보존합니다. 작업 payload가 손상되면 `FAILED`로 남기고 후속 작업을 계속합니다. 일부 보고서 생성 실패는 일괄 작업의 실패로 기록합니다.
 
-### 6) `ReviewAuthCode` (Slack 6자리 PIN 인증 코드)
-- `member`: FK `Member`
-- `cycle`: FK `ReviewCycle`
-- `code`: 6자리 핀코드 (CharField, max_length=6)
-- `is_used`: 사용 여부 (BooleanField)
+`FAILED` 발송만 일괄 재시도합니다. `UNKNOWN`은 관리자 화면에서 수신 확인 후 완료 처리하거나, 미수신 확인 후 승인된 동일 생성물의 재전송을 요청합니다. 작업 자체를 조회하므로 발송 로그 없이 종료된 작업도 화면에 표시됩니다.
 
-### 7) `ReviewAssignment` (리뷰 매칭)
-- `cycle`: FK `ReviewCycle`
-- `reviewer`: FK `Member` (리뷰 작성자)
-- `reviewee`: FK `Member` (리뷰 대상자)
-- `is_submitted`: 제출 완료 여부 (BooleanField)
-- `submitted_at`: 제출 일시 (DateTimeField)
-- `draft_data`: 전체 폼 통합 임시 저장 데이터 (JSONField, null=True)
-- `draft_saved_at`: 임시 저장 일시 (DateTimeField)
+## PDF
 
-### 8) `ReviewAnswer` (리뷰 답변 데이터)
-- `assignment`: FK `ReviewAssignment`
-- `question`: FK `ReviewQuestion`
-- `rating_value`: 척도 점수 (IntegerField, 1~5)
-- `answer_text`: 주관식 피드백 (TextField)
-- `selected_options`: M2M `QuestionOption`
-- `is_excluded_from_report`: 응답 품질 필터 제외 여부 (BooleanField)
-- `exclusion_reason`: 제외 사유 (CharField)
+TS 작업 프로세스가 Playwright Chromium의 `page.pdf()`로 인쇄합니다. 문서 JavaScript·서비스 워커·외부 네트워크/파일 요청은 차단합니다. data URL 이미지·폰트와 SVG를 사용합니다. 최대 HTML 32MB, PDF 64MB, 작업 제한 시간 60초입니다. 결과 PDF는 SQLite BLOB으로 저장합니다.
 
-### 9) `ReviewReport` (피드백 결과 리포트)
-- `cycle`: FK `ReviewCycle`
-- `reviewee`: FK `Member`
-- `pdf_file`: 결과지 리포트 파일 경로 (FileField, upload_to='reports_pdf/')
-- `ppt_file`: PPT 연동 리포트 파일 경로 (FileField, upload_to='reports_ppt/')
-- `version`: 리포트 버전 (CharField)
-- `validation_status`: 5단계 검수 상태 (`GENERATED` | `NEEDS_REVIEW` | `APPROVED` | `SENT` | `FAILED`)
-- `admin_memo`: 관리자 수정 메모/코멘트 (TextField)
-- `layout_check_passed`: 자동 레이아웃 검수 통과 여부 (BooleanField)
-- `layout_issue_notes`: 레이아웃 검수 이슈 노트 (TextField)
-- `error_log`: 생성 예외 로그 (TextField)
-- `is_sent`: Slack DM 발송 여부 (BooleanField)
-
-### 10) `SlackDeliveryLog` (Slack DM 발송 이력)
-- `cycle`: FK `ReviewCycle` (null=True)
-- `member`: FK `Member`
-- `delivery_type`: DM 종류 (`AUTH_CODE` | `REMINDER` | `REPORT` | `CUSTOM_MSG` | `TEST_DM`)
-- `message_content`: 메시지 본문 (TextField)
-- `is_success`: 성공 여부 (BooleanField)
-- `error_message`: 오류 원인 (TextField)
-
----
-
-## 3. 핵심 서비스 모듈 명세 (`core/services/`)
-
-### 1) `DataValidationService` ([validation_service.py](file:///Users/yoon/who-to-feedback/core/services/validation_service.py))
-- **`validate_excel_data(file_obj, cycle)`**: 엑셀 업로드 직후 이름 누락, 중복 이름, 대소문자 불일치, 팀/역할 누락 등 6가지 데이터 오류 사전 검증.
-- **`get_normalization_suggestions(cycle)`**: `difflib.SequenceMatcher` 알고리즘으로 유사도 85% 이상 닉네임/영문 이름(`Alex / alex / ALEX`) 정규화 병합 제안.
-- **`filter_response_quality(answers)`**: `"없습니다"`, `"잘 모르겠습니다"` 등 의미 없는 주관식 답변 자동 감지 및 제외 처리.
-
-### 2) `LayoutCheckService` ([layout_service.py](file:///Users/yoon/who-to-feedback/core/services/layout_service.py))
-- **`check_layout_overflow(cycle, reviewee)`**: 300자/500자 이상 긴 글 overflow 및 키워드 태그 8개 이상 넘침 현상을 자동 검사하여 `layout_check_passed` 및 이슈 사유 저장.
-
-### 3) `PDFReportService`, `PPTReportService`, `ReportManagementService` ([report_service.py](file:///Users/yoon/who-to-feedback/core/services/report_service.py))
-- **통합 서비스 모듈**: 리포트 데이터 바인딩, HTML 렌더링, 파일 저장, 샘플 리포트 생성 및 체크리스트집계를 단일 서비스 모듈로 통합.
-- **`generate_pdf_report(cycle, reviewee)`**: 템플릿 렌더링 결과물을 HTML 정적 리포트 파일로 즉시 저장하여 안정적인 웹 서빙 지원.
-- **`generate_sample_reports(cycle, sample_count=3)`**: 실데이터 발송 전 대표 샘플 2~3명만 리포트를 미리 생성해 템플릿 테스트 모드 구동.
-- **`get_delivery_checklist(cycle)`**: Slack 발송 전 이름 / 팀 / Slack ID / 리포트 존재 여부 / 승인 여부 5가지 지표 표 집계.
-
-### 4) `SlackService` ([slack_service.py](file:///Users/yoon/who-to-feedback/core/services/slack_service.py))
-- `send_auth_code_dm`, `send_reminder_dm`, `send_pdf_report_dm`, `send_test_dm`, `send_failed_reminders_retry` 메서드를 포함하며, 모든 DM 발송 결과를 `SlackDeliveryLog`에 전수 저장.
-
----
-
-## 4. 보안 및 접근 제어 명세 (Security & Permissions)
-
-- **관리자 권한 분리**: `@superuser_required` 데코레이터 적용 ➔ Django Superuser 또는 `role == 'ADMIN'` 인 계정만 커스텀 어드민 센터(`/admin-panel/`) 접근 허용.
-- **리뷰어 세션 검증**: `/review/<assignment_id>/` 진입 시 `request.session['member_id']`와 `assignment.reviewer_id`를 검증하여 본인 할당 리뷰만 작성 허용.
-- **질문지 잠금 정책 (ACTIVE Lock)**: 회차가 시작(`ACTIVE`)된 이후에는 질문 문항 및 선택지 추가/삭제 요청을 백엔드 뷰 차원에서 차단.
-- **마감 전 수정 / 마감 후 잠금**: 마감 시각 이전(`now <= cycle.end_at`)에는 재수정 허용, 마감 시각 경과 후에는 `is_locked = True` 처리하여 수정 금지.
-
----
-
-## 5. URL 라우팅 패치 명세 (`core/urls.py`)
-
-| URL 패턴 | 뷰 함수 | 기능 설명 |
-|---|---|---|
-| `/login/` | `auth_views.login_view` | Slack 6자리 PIN 코드 인증 로그인 |
-| `/` | `review_views.review_dashboard` | 리뷰어 개인 대시보드 |
-| `/review/<assignment_id>/` | `review_views.review_form` | 피어리뷰 폼 작성 및 마감 잠금 제어 |
-| `/review/<assignment_id>/save-draft/` | `review_views.save_draft` | 전체 질문지 폼 통합 임시 저장 API |
-| `/admin-panel/` | `admin_views.admin_dashboard` | 관리자 메인 대시보드 |
-| `/admin-panel/validation/` | `admin_views.admin_validation` | 데이터 사전 검증 & 정규화 센터 |
-| `/admin-panel/cycles/<id>/sample-reports/` | `admin_views.admin_generate_sample_reports` | 샘플 3명 미리보기 테스트 리포트 생성 |
-| `/admin-panel/cycles/<id>/layout-check/` | `admin_views.admin_run_layout_check` | 자동 레이아웃 검수 일괄 실행 |
-| `/admin-panel/reports/<id>/regenerate/` | `admin_views.admin_regenerate_report` | 1클릭 개별 리포트/실패 재시도 |
-| `/admin-panel/reports/<id>/memo/` | `admin_views.admin_save_report_memo` | 관리자 수정 메모/코멘트 저장 API |
-| `/admin-panel/cycles/<id>/history/` | `admin_views.admin_cycle_history` | 회차 및 템플릿/문항 버전 변경 이력 뷰 |
-| `/admin-panel/cycles/<id>/checklist/` | `admin_views.admin_delivery_checklist` | 발송 대상 체크리스트 뷰 |
-| `/admin-panel/messages/retry-failed/` | `admin_views.admin_retry_failed_messages` | 실패한 Slack DM 1클릭 재발송 |
-| `/admin-panel/messages/send-test/` | `admin_views.admin_send_test_dm` | 발송 전 관리자 테스트 DM 전송 |
+Python은 런타임에서 사용하지 않습니다. Chromium 설치는 개발·Docker에서 필요하고 Poppler는 PDF 회귀 검증에만 사용합니다.

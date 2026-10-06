@@ -13,12 +13,12 @@
 </div>
 <div class="validation-grid">
   <section class="card">
-    <div class="section-head"><div><h2 class="card-title">필수값 오류</h2><p class="card-subtitle">원본 행과 현재 입력값을 확인해 주세요.</p></div><span class="badge {% if logs %}badge-warning{% else %}badge-success{% endif %}">{% if logs %}확인 필요{% else %}정상{% endif %}</span></div>
-    <div class="table-scroll compact-table"><table class="table-custom"><thead><tr><th>행</th><th>검증 항목</th><th>현재 입력값</th></tr></thead><tbody>{% for log in logs %}<tr><td>{{ log.row_index }}행</td><td><span class="badge badge-warning">{{ log.get_issue_type_display|default:log.issue_type }}</span></td><td><code>{{ log.current_value|default:'비어 있음' }}</code></td></tr>{% empty %}<tr><td colspan="3"><div class="table-empty-success">필수값 오류가 발견되지 않았어요.</div></td></tr>{% endfor %}</tbody></table></div>
+    <div class="section-head"><div><h2 class="card-title">필수값 오류</h2><p class="card-subtitle">원본 행과 현재 입력값을 확인해 주세요.</p></div><span class="badge {% if (logs | length) %}badge-warning{% else %}badge-success{% endif %}">{% if (logs | length) %}확인 필요{% else %}정상{% endif %}</span></div>
+    <div class="table-scroll compact-table"><table class="table-custom"><thead><tr><th>행</th><th>검증 항목</th><th>현재 입력값</th></tr></thead><tbody>{% for log in logs %}<tr><td>{{ log.row_index }}행</td><td><span class="badge badge-warning">{{ log.get_issue_type_display|fallback(log.issue_type) }}</span></td><td><code>{{ log.current_value|fallback('비어 있음') }}</code></td></tr>{% else %}<tr><td colspan="3"><div class="table-empty-success">필수값 오류가 발견되지 않았어요.</div></td></tr>{% endfor %}</tbody></table></div>
   </section>
   <section class="card">
     <div class="section-head"><div><h2 class="card-title">이름 정규화 제안</h2><p class="card-subtitle">병합 전 원본 이름과 제안 이름을 확인하세요.</p></div></div>
-    <div class="normalization-list">{% for sug in suggestions %}<article class="normalization-item"><div><strong>{{ sug.raw_names|join:', ' }}</strong><span>유사도 {{ sug.similarity }}% · 제안 이름 {{ sug.suggested_name }}</span></div><form method="post" action="{% url 'admin_apply_normalization' %}">{% csrf_token %}<input type="hidden" name="cycle_id" value="{{ cycle.id }}">{% for r in sug.raw_names %}<input type="hidden" name="raw_names" value="{{ r }}">{% endfor %}<input type="hidden" name="target_name" value="{{ sug.suggested_name }}"><button type="submit" class="btn btn-tonal btn-small">{{ sug.suggested_name }}(으)로 병합</button></form></article>{% empty %}<div class="empty-state compact-empty">유사도가 높은 미정규화 이름 그룹이 없습니다.</div>{% endfor %}</div>
+    <div class="normalization-list">{% for sug in suggestions %}<article class="normalization-item"><div><strong>{{ sug.raw_names|join(', ') }}</strong><span>유사도 {{ sug.similarity }}% · 제안 이름 {{ sug.suggested_name }}</span></div><form method="post" action="{{ url('admin_apply_normalization') }}"><input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}"><input type="hidden" name="cycle_id" value="{{ cycle.id }}">{% for r in sug.raw_names %}<input type="hidden" name="raw_names" value="{{ r }}">{% endfor %}<input type="hidden" name="target_name" value="{{ sug.suggested_name }}"><button type="submit" class="btn btn-tonal btn-small">{{ sug.suggested_name }}(으)로 병합</button></form></article>{% else %}<div class="empty-state compact-empty">유사도가 높은 미정규화 이름 그룹이 없습니다.</div>{% endfor %}</div>
   </section>
 </div>
 <section class="card content-section" style="margin-top:24px;">
@@ -33,16 +33,16 @@
         <tr>
           <td>Q{{ ans.question.order }}</td>
           <td>{{ ans.assignment.reviewer.name }} ➡️ {{ ans.assignment.reviewee.name }}</td>
-          <td><code>{{ ans.answer_text|truncatechars:40 }}</code></td>
-          <td><span class="badge badge-warning">{{ ans.exclusion_reason|default:'응답 품질 미달' }}</span></td>
+          <td><code>{{ ans.answer_text|truncatechars(40) }}</code></td>
+          <td><span class="badge badge-warning">{{ ans.exclusion_reason|fallback('응답 품질 미달') }}</span></td>
           <td>
-            <form method="post" action="{% url 'admin_toggle_answer_exclusion' answer_id=ans.id %}">
-              {% csrf_token %}
+            <form method="post" action="{{ url('admin_toggle_answer_exclusion', {answer_id: ans.id}) }}">
+              <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
               <button class="btn btn-tonal btn-small" type="submit">리포트에 복원</button>
             </form>
           </td>
         </tr>
-        {% empty %}
+        {% else %}
         <tr><td colspan="5"><div class="table-empty-success">품질 필터로 제외된 답변이 없습니다.</div></td></tr>
         {% endfor %}
       </tbody>
@@ -50,6 +50,6 @@
   </div>
 </section>
 {% else %}
-<section class="card empty-state"><h2 class="card-title">검증할 회차가 없습니다</h2><p class="card-subtitle">회차를 만든 뒤 팀원·매칭 데이터를 업로드해 주세요.</p><a class="btn btn-primary empty-action" href="{% url 'admin_dashboard' %}">Overview로 이동</a></section>
+<section class="card empty-state"><h2 class="card-title">검증할 회차가 없습니다</h2><p class="card-subtitle">회차를 만든 뒤 팀원·매칭 데이터를 업로드해 주세요.</p><a class="btn btn-primary empty-action" href="{{ url('admin_dashboard') }}">Overview로 이동</a></section>
 {% endif %}
 {% endblock %}

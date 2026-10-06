@@ -104,3 +104,10 @@ ipython_config.py
 # Environment variables
 .env
 .env.local
+node_modules/
+.pdf-venv/
+artifacts/
+output/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
