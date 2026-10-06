@@ -29,7 +29,7 @@ export function registerReportsRoutes(services: HttpServices) {
         .map((a) => {
           const member = repo.require("members", a.reviewee_id),
             r = repo.one(
-              "SELECT * FROM reports WHERE cycle_id=? AND reviewee_id=?",
+              "SELECT validation_status,pdf_status,(html IS NOT NULL AND length(CAST(html AS BLOB))>0) has_html FROM reports WHERE cycle_id=? AND reviewee_id=?",
               id(c),
               member.id,
             );
@@ -37,7 +37,7 @@ export function registerReportsRoutes(services: HttpServices) {
             member,
             department: member.department,
             has_slack_id: !!member.slack_user_id,
-            has_html: !!r?.html,
+            has_html: !!r?.has_html,
             has_pdf: r?.pdf_status === "READY",
             is_approved: ["APPROVED", "SENT"].includes(r?.validation_status),
           };

@@ -39,7 +39,7 @@ bun run test:ui
 bun run test:pdf
 ```
 
-UI 검증은 메모리 DB·가상 HTTP·가상 Slack으로 일반·빈 상태·오류·잠금·발송 실패·확인 필요 화면의 데스크톱/모바일 × 라이트/다크를 검사하며, 실제 브라우저에서 임시 저장·제출 흐름을 실행합니다. 산출물은 `artifacts/ui/`입니다.
+UI 검증은 메모리 DB·localhost HTTP 서버·가상 Slack으로 일반·빈 상태·오류·잠금·발송 실패·확인 필요 화면의 데스크톱/모바일 × 라이트/다크를 검사하며, 실제 브라우저에서 임시 저장·제출 흐름을 실행합니다. 산출물은 `artifacts/ui/`입니다.
 
 PDF 검증은 실제 TS 변환기를 실행하고 Poppler의 `pdfinfo`, `pdftotext`로 페이지 수와 한글 피드백 원문을 확인합니다. macOS는 `brew install poppler`, Ubuntu는 `sudo apt-get install poppler-utils`로 검증 도구를 설치합니다. 예시 PDF는 `output/pdf/`, 긴 피드백 검증 PDF는 `artifacts/pdf/`에 저장됩니다. Poppler는 검증 도구이며 앱의 PDF 생성 의존성은 아닙니다.
 
@@ -50,7 +50,7 @@ PLAYWRIGHT_CHROMIUM_EXECUTABLE="/Applications/Chromium.app/Contents/MacOS/Chromi
 PLAYWRIGHT_CHROMIUM_EXECUTABLE="/Applications/Chromium.app/Contents/MacOS/Chromium" bun run test:pdf
 ```
 
-`.github/workflows/verify.yml`은 타입·업무·UI·PDF 검증을 실행하고 산출물을 보존합니다. 로컬 검증 통과는 실제 Slack 전달 또는 운영 배포 완료를 의미하지 않습니다.
+`.github/workflows/verify.yml`은 정적·업무 검사와 브라우저 검사를 병렬 실행합니다. UI는 132개 변형을 유지하며 실제 PDF 검증은 별도 단계에서 실행합니다. Chromium headless shell 캐시를 사용하고 PDF·화면 캡처를 보존합니다. 로컬 검증 통과는 실제 Slack 전달 또는 운영 배포 완료를 의미하지 않습니다.
 
 ## 문서
 
@@ -60,3 +60,4 @@ PLAYWRIGHT_CHROMIUM_EXECUTABLE="/Applications/Chromium.app/Contents/MacOS/Chromi
 - [프론트엔드 변경](docs/FRONTEND_MODIFICATION_GUIDE.md)
 - [커스텀 보고서 양식](docs/CUSTOM_HTML_TEMPLATE_GUIDE.md)
 - [리팩토링 결과](docs/REFACTOR_RESULT.md)
+- [성능 개선·CI 검증 결과](docs/PERFORMANCE.md)

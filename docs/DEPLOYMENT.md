@@ -47,11 +47,11 @@ Bun 1.3.12를 기준으로 합니다. 새 개발 체크아웃에서 환경 설�
 
 ```sh
 bun install --frozen-lockfile
-bunx playwright install chromium
+bunx playwright install --only-shell chromium
 bun run dev
 ```
 
-Linux에서 Chromium 시스템 라이브러리까지 필요하면 `bunx playwright install --with-deps chromium`을 사용합니다.
+Linux에서 Chromium 시스템 라이브러리까지 필요하면 `bunx playwright install --with-deps --only-shell chromium`을 사용합니다.
 
 | 화면 | 로컬 URL |
 |---|---|
