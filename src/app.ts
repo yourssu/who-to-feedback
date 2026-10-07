@@ -2,7 +2,6 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { getCookie, setCookie } from "hono/cookie";
 import { timingSafeEqual } from "node:crypto";
-import { mkdirSync } from "node:fs";
 import { resolve, sep } from "node:path";
 import { z } from "zod";
 import { DomainError, type Repository, type Row } from "./db";
@@ -102,30 +101,6 @@ export function createApp(repo: Repository) {
   const id = (c: Ctx, name = "cycle_id") => numeric(c.req.param(name));
   const back = (c: Ctx, cycle: number, screen: RouteName = "admin_reports") =>
     c.redirect(url(screen, { cycle_id: cycle }));
-  const draftCycle = (cycle: number) => {
-    const c = repo.cycle(cycle);
-    if (c.is_question_locked)
-      throw new DomainError(
-        "시작한 회차의 문항과 선택지는 수정할 수 없습니다.",
-        403,
-      );
-    return c;
-  };
-  const invalidateReports = (cycle: number) => {
-    if (
-      repo.one(
-        "SELECT id FROM jobs WHERE kind='REPORT' AND status IN ('PENDING','RUNNING','UNKNOWN') AND json_extract(payload,'$.cycle_id')=?",
-        cycle,
-      )
-    )
-      throw new DomainError(
-        "결과지 발송 중에는 답변 제외 상태를 변경할 수 없습니다.",
-      );
-    repo.run(
-      "UPDATE reports SET validation_status='NEEDS_REVIEW',html=NULL,pdf=NULL,pdf_status='PENDING',approved_hash=NULL,is_sent=0 WHERE cycle_id=?",
-      cycle,
-    );
-  };
   app.get("/health/", (c) => {
     repo.one("SELECT 1");
     return c.json({ status: "ok" });
@@ -263,8 +238,6 @@ export function createApp(repo: Repository) {
     form,
     id,
     back,
-    draftCycle,
-    invalidateReports,
     clientKey,
     locked,
     fail,

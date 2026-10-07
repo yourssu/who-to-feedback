@@ -458,3 +458,21 @@ export function reportRows(repo: Repository, cycle: number) {
       preview_data: compileFeedback(repo, cycle, r.reviewee_id),
     }));
 }
+
+export function invalidateReports(repo: Repository, cycle: number) {
+  if (repo.require("cycles", cycle).status === "CLOSED")
+    throw new DomainError("배포가 종료된 결과지는 변경할 수 없습니다.");
+  if (
+    repo.one(
+      "SELECT id FROM jobs WHERE kind='REPORT' AND status IN ('PENDING','RUNNING','UNKNOWN') AND json_extract(payload,'$.cycle_id')=?",
+      cycle,
+    )
+  )
+    throw new DomainError(
+      "결과지 발송 중에는 답변 제외 상태를 변경할 수 없습니다.",
+    );
+  repo.run(
+    "UPDATE reports SET validation_status='NEEDS_REVIEW',html=NULL,pdf=NULL,pdf_status='PENDING',approved_hash=NULL,is_sent=0 WHERE cycle_id=?",
+    cycle,
+  );
+}

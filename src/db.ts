@@ -6,6 +6,7 @@ import type {
   Assignment,
   Member,
   Question,
+  Option,
   CycleRecord,
   CycleView,
   ReportRecord,
@@ -65,14 +66,14 @@ export class Repository {
     return this.all("SELECT * FROM members ORDER BY name,id") as Member[];
   }
   questions(cycle: number): Question[] {
-    const options = new Map<number, Row[]>();
-    for (const option of this.all(
+    const options = new Map<number, Option[]>();
+    for (const option of this.all<Option>(
       'SELECT o.* FROM options o JOIN questions q ON q.id=o.question_id WHERE q.cycle_id=? ORDER BY o."order",o.id',
       cycle,
     )) {
-      const values = options.get(option.question_id) ?? [];
-      values.push(option);
-      options.set(option.question_id, values);
+      const group = options.get(option.question_id) ?? [];
+      group.push(option);
+      options.set(option.question_id, group);
     }
     return this.all(
       'SELECT * FROM questions WHERE cycle_id=? ORDER BY "order",id',
@@ -96,14 +97,17 @@ export class Repository {
   assignments(cycle: number, reviewer?: number): Assignment[] {
     const members = new Map(
       this.all<Member>(
-        "SELECT * FROM members WHERE id IN (SELECT reviewer_id FROM assignments WHERE cycle_id=? UNION SELECT reviewee_id FROM assignments WHERE cycle_id=?)",
+        `SELECT m.* FROM members m WHERE m.id IN (
+        SELECT reviewer_id FROM assignments WHERE cycle_id=?
+        UNION SELECT reviewee_id FROM assignments WHERE cycle_id=?
+      )`,
         cycle,
         cycle,
       ).map((member) => [member.id, member]),
     );
     return this.all(
-      `SELECT * FROM assignments WHERE cycle_id=? ${reviewer ? "AND reviewer_id=?" : ""} ORDER BY id`,
-      ...[cycle, ...(reviewer ? [reviewer] : [])],
+      `SELECT * FROM assignments WHERE cycle_id=? ${reviewer !== undefined ? "AND reviewer_id=?" : ""} ORDER BY id`,
+      ...[cycle, ...(reviewer !== undefined ? [reviewer] : [])],
     ).map((a) => ({
       ...a,
       is_submitted: !!a.is_submitted,
