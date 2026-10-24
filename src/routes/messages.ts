@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DomainError, type Row } from "../db";
+import { DomainError, type Row } from "../repository";
 import { enqueue } from "../domain";
 import { resolveDelivery, retryFailedDeliveries } from "../deliveries";
 import type { Ctx, HttpServices } from "../http/types";

@@ -1,6 +1,5 @@
-import { mkdirSync, rmSync } from "node:fs";
-import { resolve } from "node:path";
-import { DomainError } from "../db";
+import { getPlatform } from "../platform";
+import { DomainError } from "../repository";
 import { questionSchema } from "../domain";
 import {
   addQuestion,
@@ -41,16 +40,14 @@ export function registerQuestionsRoutes(services: HttpServices) {
         if (!png && !jpg && !webp)
           throw new DomainError("PNG, JPEG, WebP 이미지를 선택해 주세요.");
         image = `question_images/${crypto.randomUUID()}.${png ? "png" : jpg ? "jpg" : "webp"}`;
-        const root = process.env.PEERFLOW_MEDIA ?? "media";
-        mkdirSync(resolve(root, "question_images"), { recursive: true });
-        imagePath = resolve(root, image);
-        await Bun.write(imagePath, bytes);
+        imagePath = image;
+        await getPlatform(repo).mediaPut(image, bytes);
       }
       addQuestion(repo, id(c), q, image);
     } catch (error) {
       if (imagePath) {
         try {
-          rmSync(imagePath, { force: true });
+          await getPlatform(repo).mediaDelete(imagePath);
         } catch (cleanupError) {
           throw new AggregateError(
             [error, cleanupError],

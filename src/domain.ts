@@ -1,7 +1,7 @@
 import { createHash, randomInt } from "node:crypto";
 import { z } from "zod";
 import type { JobKind, JobPayloads } from "./models";
-import { DomainError, type Repository, type Row } from "./db";
+import { DomainError, type Repository, type Row } from "./repository";
 export const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 export const now = () => new Date().toISOString();
 export const textLabels = [
@@ -233,7 +233,7 @@ export function pinJob(repo: Repository, member: number, cycle: number) {
       member_id: member,
       cycle_id: cycle,
       type: "AUTH_CODE",
-      text: `[${c.title}] 피어리뷰를 시작해 주세요.\n6자리 PIN: ${code}\n${process.env.SITE_URL ?? "http://localhost:8000"}/login/`,
+      text: `[${c.title}] 피어리뷰를 시작해 주세요.\n6자리 PIN: ${code}\n${repo.platform?.siteUrl ?? process.env.SITE_URL ?? "http://localhost:8000"}/login/`,
     },
     `pin:${cycle}:${member}`,
   );

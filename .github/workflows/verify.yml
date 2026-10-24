@@ -13,7 +13,7 @@ jobs:
     timeout-minutes: 5
     env:
       NODE_ENV: test
-      MOCK_SLACK_MODE: 'true'
+      MOCK_SLACK_MODE: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -28,7 +28,7 @@ jobs:
     timeout-minutes: 10
     env:
       NODE_ENV: test
-      MOCK_SLACK_MODE: 'true'
+      MOCK_SLACK_MODE: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -50,5 +50,33 @@ jobs:
           path: |
             artifacts/
             output/pdf/*.pdf
+          if-no-files-found: ignore
+          retention-days: 7
+
+  workers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MOCK_SLACK_MODE: "true"
+      CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.12
+      - run: bun install --frozen-lockfile
+      - run: bunx playwright install --with-deps --only-shell chromium
+      - run: sudo apt-get install -y poppler-utils
+      - run: bun run scripts/capture-http-contract.ts --check
+      - run: bun run check:workers
+      - run: bun run test:workers
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: peerflow-workers-verification
+          path: artifacts/workers/
           if-no-files-found: ignore
           retention-days: 7

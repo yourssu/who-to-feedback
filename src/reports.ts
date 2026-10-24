@@ -1,24 +1,11 @@
-import { readFileSync } from "node:fs";
-import { resolve, sep } from "node:path";
-import { DomainError, type Repository, type Row } from "./db";
+import { createHash } from "node:crypto";
+import { fontData, imageData } from "#report-files";
+import { DomainError, type Repository, type Row } from "./repository";
 import { outlineSvgText } from "./reporting/svg-text";
 import { reportPrintStyle } from "./reporting/print-style";
 import { paginateQuestions } from "./reporting/pagination";
 import { now, enqueue } from "./domain";
-import { escapeHtml, renderCustom, templates } from "./templates";
-const fontUris = new Map<string, string>();
-function fontData(format: "ttf" | "woff2") {
-  let uri = fontUris.get(format);
-  if (!uri) {
-    uri =
-      `data:font/${format};base64,` +
-      readFileSync(`core/static/fonts/Pretendard-Regular.${format}`).toString(
-        "base64",
-      );
-    fontUris.set(format, uri);
-  }
-  return uri;
-}
+import { escapeHtml, renderCustom, templates } from "#templates";
 const colors = [
   "#2B2D6E",
   "#8B7CE8",
@@ -91,22 +78,6 @@ function radar(labels: string[], values: number[]) {
       `<polygon points="${values.map((v, i) => point(v * 24, i)).join(" ")}" fill="#8b7ce8" fill-opacity=".25" stroke="#2b2d6e" stroke-width="2.5"/>`,
   );
 }
-function imageData(name: string | null) {
-  if (!name) return "";
-  const root = resolve(process.env.PEERFLOW_MEDIA ?? "media"),
-    path = resolve(root, name);
-  if (!path.startsWith(root + sep)) return "";
-  try {
-    const mime = name.endsWith(".png")
-      ? "image/png"
-      : name.endsWith(".webp")
-        ? "image/webp"
-        : "image/jpeg";
-    return `data:${mime};base64,${readFileSync(path).toString("base64")}`;
-  } catch {
-    return "";
-  }
-}
 export function compileFeedback(
   repo: Repository,
   cycleId: number,
@@ -154,7 +125,11 @@ export function compileFeedback(
       content: q.content,
       category: q.category || "기본 역량",
       question_type: q.question_type,
-      image_url: imageData(q.image?.url.slice("/media/".length) ?? null),
+      image_url: repo.platform?.reportAssets
+        ? (repo.platform.reportAssets.images.get(
+            q.image?.url.slice("/media/".length) ?? "",
+          ) ?? "")
+        : imageData(q.image?.url.slice("/media/".length) ?? null),
       avg_rating: 0,
       avg_rating_label: "0.0점",
       rating_percent: 0,
@@ -244,14 +219,13 @@ export function compileFeedback(
   ].slice(0, 6);
   // Keep custom templates with an explicit truetype format compatible.
   context.font_format = cycle.use_custom_template ? "truetype" : "woff2";
-  context.font_path = fontData(cycle.use_custom_template ? "ttf" : "woff2");
+  context.font_path =
+    repo.platform?.reportAssets?.fonts[
+      cycle.use_custom_template ? "ttf" : "woff2"
+    ] ?? fontData(cycle.use_custom_template ? "ttf" : "woff2");
   return context;
 }
-export function generateReport(
-  repo: Repository,
-  cycle: number,
-  member: number,
-) {
+export function renderReport(repo: Repository, cycle: number, member: number) {
   const c = repo.require("cycles", cycle),
     context = compileFeedback(repo, cycle, member);
   const rendered =
@@ -262,6 +236,31 @@ export function generateReport(
   const html = /<\/head>/i.test(rendered)
     ? rendered.replace(/<\/head>/i, css + "</head>")
     : rendered + css;
+  return { html, context, version: c.version };
+}
+export function generateReport(
+  repo: Repository,
+  cycle: number,
+  member: number,
+) {
+  const rendered = renderReport(repo, cycle, member);
+  commitReport(
+    repo,
+    cycle,
+    member,
+    rendered.html,
+    rendered.context,
+    rendered.version,
+  );
+}
+export function commitReport(
+  repo: Repository,
+  cycle: number,
+  member: number,
+  html: string,
+  context: Row,
+  version: string,
+) {
   const contentHash = hashReport(html);
   repo.transaction(() => {
     const previous = repo.one(
@@ -269,7 +268,12 @@ export function generateReport(
       cycle,
       member,
     );
-    if (previous?.html === html) {
+    if (
+      previous?.html === html ||
+      (html.startsWith("r2:reports/") &&
+        previous?.html &&
+        previous.content_hash === contentHash)
+    ) {
       if (previous.pdf_status !== "READY")
         enqueue(
           repo,
@@ -300,7 +304,7 @@ export function generateReport(
       cycle,
       member,
       html,
-      c.version,
+      version,
       revision,
       contentHash,
       issues.length ? 0 : 1,
@@ -428,8 +432,12 @@ export function publish(repo: Repository, cycle: number) {
     repo.log(cycle, "결과지 검토 완료 및 발송 요청");
   });
 }
-function hashReport(s: string) {
-  return new Bun.CryptoHasher("sha256").update(s).digest("hex");
+export function hashReport(s: string) {
+  const reference = s.match(
+    /^r2:reports\/([a-f0-9]{64})(?:-[a-f0-9-]{36})?\.html$/,
+  );
+  if (reference) return reference[1];
+  return createHash("sha256").update(s).digest("hex");
 }
 export function reportRows(repo: Repository, cycle: number) {
   const labels: Row = {

@@ -2,11 +2,11 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { getCookie, setCookie } from "hono/cookie";
 import { timingSafeEqual } from "node:crypto";
-import { resolve, sep } from "node:path";
+import { getPlatform } from "./platform";
 import { z } from "zod";
-import { DomainError, type Repository, type Row } from "./db";
+import { DomainError, type Repository, type Row } from "./repository";
 import { hash } from "./domain";
-import { routes, templates, url, type RouteName } from "./templates";
+import { routes, templates, url, type RouteName } from "#templates";
 import type { Ctx, Env, Session, HttpServices } from "./http/types";
 import { registerAuthRoutes } from "./routes/auth";
 import { registerReviewerRoutes } from "./routes/reviewer";
@@ -34,9 +34,10 @@ const secureEqual = (a: string, b: string) => {
 };
 export function createApp(repo: Repository) {
   const app = new Hono<Env>();
+  const platform = getPlatform(repo);
   const clientKey = (c: Ctx, identity: string) =>
     hash(
-      `${process.env.TRUST_PROXY === "true" ? (c.req.header("X-Real-IP") ?? c.env?.clientIp ?? "unknown") : (c.env?.clientIp ?? "direct")}:${identity}`,
+      `${platform.trustProxy ? (c.req.header("X-Real-IP") ?? c.env?.clientIp ?? "unknown") : (c.env?.clientIp ?? "direct")}:${identity}`,
     );
   const locked = (key: string) =>
     (repo.one("SELECT locked_until FROM login_attempts WHERE key=?", key)
@@ -105,25 +106,7 @@ export function createApp(repo: Repository) {
     repo.one("SELECT 1");
     return c.json({ status: "ok" });
   });
-  app.get("/static/*", async (c) => {
-    const root = resolve("core/static"),
-      path = resolve(
-        root,
-        decodeURIComponent(c.req.path.slice("/static/".length)),
-      );
-    if (!path.startsWith(root + sep)) return c.notFound();
-    const file = Bun.file(path);
-    if (!(await file.exists())) return c.notFound();
-    const etag = `W/"${file.size}-${file.lastModified}"`;
-    const headers = {
-      "Cache-Control": "public, max-age=3600",
-      "Content-Type": file.type,
-      ETag: etag,
-    };
-    if (c.req.header("If-None-Match") === etag)
-      return new Response(null, { status: 304, headers });
-    return new Response(file, { headers });
-  });
+  app.get("/static/*", (c) => platform.staticFile(c.req.raw));
   app.use(
     "*",
     bodyLimit({
@@ -158,8 +141,9 @@ export function createApp(repo: Repository) {
     try {
       if (!["GET", "HEAD", "OPTIONS"].includes(c.req.method)) {
         const origin = c.req.header("Origin");
-        const expected = process.env.SITE_URL
-          ? new URL(process.env.SITE_URL).origin
+        const siteUrl = platform.siteUrl;
+        const expected = siteUrl
+          ? new URL(siteUrl).origin
           : new URL(c.req.url).origin;
         if (origin && origin !== expected)
           throw new DomainError("허용되지 않은 요청 출처입니다.", 403);
@@ -220,7 +204,7 @@ export function createApp(repo: Repository) {
       const opts = {
         path: "/",
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
+        secure: platform.secureCookies,
         sameSite: "Lax" as const,
         maxAge: 12 * 60 * 60,
       };
@@ -260,12 +244,7 @@ export function createApp(repo: Repository) {
     const name = decodeURIComponent(c.req.path.slice("/media/".length));
     if (!repo.one("SELECT id FROM questions WHERE image=?", name))
       return c.notFound();
-    const root = resolve(process.env.PEERFLOW_MEDIA ?? "media"),
-      path = resolve(root, name);
-    if (!path.startsWith(root + sep)) return c.notFound();
-    const file = Bun.file(path);
-    if (!(await file.exists())) return c.notFound();
-    return c.body(await file.arrayBuffer(), 200, { "Content-Type": file.type });
+    return platform.mediaGet(name);
   });
   app.onError((error, c) => {
     const status =

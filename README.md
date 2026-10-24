@@ -1,8 +1,19 @@
 # PeerFlow
 
-팀원 간 피어리뷰 작성과 보고서 제작·Slack 전달을 자동화하는 Bun + TypeScript 애플리케이션입니다. Hono, Nunjucks, SQLite를 사용하며 기존 웹사이트의 HTML·CSS·폰트·반응형·라이트/다크 테마를 유지합니다. Django DB 이관은 지원하지 않습니다.
+팀원 간 피어리뷰 작성과 보고서 제작·Slack 전달을 자동화하는 TypeScript 애플리케이션입니다. Cloudflare Workers 실행 경로와 기존 Bun/Docker 실행 경로를 제공합니다. Hono, Nunjucks, SQLite를 사용하며 기존 웹사이트의 HTML·CSS·폰트·반응형·라이트/다크 테마를 유지합니다. Django DB 이관은 지원하지 않습니다.
 
 팀원·회차·문항·매칭 준비 → 회차 시작과 PIN 발급 → 리뷰 임시 저장·제출 → 관리자 마감 → HTML·PDF 생성 → 검토 승인 → Slack 전달 순서로 동작합니다. 예약 자동 시작·자동 마감은 수행하지 않습니다.
+
+## Cloudflare Workers
+
+```sh
+bun install --frozen-lockfile
+bun run dev:workers
+```
+
+Workers + SQLite Durable Object + R2 + Queues + Browser Run을 사용합니다. 기존 업무 트랜잭션 보존을 위해 계획서의 D1 대안을 선택했습니다. `bun run check:workers`는 배포 없이 번들을 검증하고, `bun run test:workers`는 실제 로컬 workerd에서 전체 흐름을 검사합니다. 원격 배포는 자동으로 수행하지 않습니다.
+
+[Workers 실행·배포·복구 절차](docs/CLOUDFLARE_WORKERS_RUNBOOK.md)와 [이전 계획 및 설계 결정](docs/CLOUDFLARE_WORKERS_MIGRATION_PLAN.md)을 확인해 주세요. 아래 Bun/Docker 명령과 파일 백업은 Workers 원격 데이터에 적용되지 않습니다.
 
 ## 개발 실행
 

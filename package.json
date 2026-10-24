@@ -1,5 +1,6 @@
 {
   "name": "peerflow",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,9 +14,15 @@
     "verify": "bun run typecheck && bun run test && bun run test:ui && bun run test:pdf",
     "format": "prettier --write src scripts tests package.json tsconfig.json",
     "format:check": "prettier --check src scripts tests package.json tsconfig.json",
-    "manage": "bun run scripts/manage.ts"
+    "manage": "bun run scripts/manage.ts",
+    "build:workers": "bun run scripts/workers/build.ts",
+    "dev:workers": "bun run build:workers && node scripts/workers/wrangler.mjs dev --env staging",
+    "check:workers": "bun run build:workers && node scripts/workers/wrangler.mjs deploy --env staging --dry-run --outdir dist/worker && node scripts/workers/check-bundle.mjs",
+    "test:workers": "bun run build:workers && node scripts/workers/test.mjs"
   },
   "dependencies": {
+    "@cloudflare/puppeteer": "1.4.0",
+    "@noble/hashes": "2.4.0",
     "@slack/web-api": "^7.13.0",
     "hono": "^4.10.0",
     "nunjucks": "^3.2.4",
@@ -24,11 +31,20 @@
     "zod": "^4.1.0"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "5.20261023.1",
     "@types/bun": "latest",
     "@types/nunjucks": "^3.2.6",
     "@types/opentype.js": "^1.3.10",
     "prettier": "^3.9.9",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "wrangler": "4.152.0",
+    "miniflare": "5.20261019.2-beta",
+    "esbuild": "0.28.2"
   },
-  "packageManager": "bun@1.3.12"
+  "packageManager": "bun@1.3.12",
+  "imports": {
+    "#templates": "./src/templates.ts",
+    "#platform-default": "./src/legacy/platform.ts",
+    "#report-files": "./src/legacy/report-files.ts"
+  }
 }

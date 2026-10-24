@@ -1,0 +1,292 @@
+[
+  {
+    "method": "GET",
+    "path": "/",
+    "name": "review_dashboard"
+  },
+  {
+    "method": "GET",
+    "path": "/admin-panel/",
+    "name": "admin_dashboard"
+  },
+  {
+    "method": "POST",
+    "path": "/admin-panel/assignments/:assignment_id/delete/",
+    "name": "admin_delete_assignment"
+  },
+  {
+    "method": "GET",
+    "path": "/admin-panel/cycles/:cycle_id/assignments/",
+    "name": "admin_assignments"
+  },
+  {
+    "method": "POST",
+    "path": "/admin-panel/cycles/:cycle_id/assignments/add/",
+    "name": "admin_add_assignment"
+  },
+  {
+    "method": "POST",
+    "path": "/admin-panel/cycles/:cycle_id/assignments/auto-match/",
+    "name": "admin_auto_match"
+  },
+  {
+    "method": "GET",
+    "path": "/admin-panel/cycles/:cycle_id/checklist/",
+    "name": "admin_delivery_checklist"
+  },
+  {
+    "method": "POST",
+    "path": "/admin-panel/cycles/:cycle_id/close/",
+    "name": "admin_close_cycle_action"
+  },
+  {
+    "method": "POST",
+    "path": "/admin-panel/cycles/:cycle_id/generate-reports/",
+    "name": "admin_generate_reports_action"
+  },
+  {
+    "method": "GET",
+    "path": "/admin-panel/cycles/:cycle_id/history/",
+    "name": "admin_cycle_history"
+  },
+  {
+    "method": "POST",
+    "path": "/admin-panel/cycles/:cycle_id/layout-check/",
+    "name": "admin_run_layout_check"
+  },
+  {
+    "method": "POST",
+    "path": "/admin-panel/cycles/:cycle_id/publish/",
+    "name": "admin_publish_reports_action"
+  },
+  {
+    "method": "GET",
+    "path": "/admin-panel/cycles/:cycle_id/questions/",
+    "name": "admin_questions"
+  },
+  {
+    "method": "POST",
+    "path": "/admin-panel/cycles/:cycle_id/questions/add/",
+    "name": "admin_add_question"
+  },
+  {
+    "method": "POST",
+    "path": "/admin-panel/cycles/:cycle_id/reminder/",
+    "name": "admin_send_reminder_action"
+  },
+  {
+    "method": "GET",
+    "path": "/admin-panel/cycles/:cycle_id/reports/",
+    "name": "admin_reports"
+  },
+  {
+    "method": "POST",
+    "path": "/admin-panel/cycles/:cycle_id/sample-reports/",
+    "name": "admin_generate_sample_reports"
+  },
+  {
+    "method": "POST",
+    "path": "/admin-panel/cycles/:cycle_id/start/",
+    "name": "admin_start_cycle_action"
+  },
+  {
+    "method": "GET",
+    "path": "/admin-panel/cycles/:cycle_id/status/",
+    "name": "admin_status_detail"
+  },
+  {
+    "method": "POST",
+    "path": "/admin-panel/cycles/:cycle_id/toggle-template/",
+    "name": "admin_toggle_custom_template"
+  },
+  {
+    "method": "POST",
+    "path": "/admin-panel/cycles/:cycle_id/update-notice/",
+    "name": "admin_update_reviewer_notice"
+  },
+  {
+    "method": "POST",
+    "path": "/admin-panel/cycles/:cycle_id/upload-template/",
+    "name": "admin_upload_custom_template"
+  },
+  {
+    "method": "GET",
+    "path": "/admin-panel/cycles/:cycle_id/validation/",
+    "name": "admin_validation_detail"
+  },
+  {
+    "method": "POST",
+    "path": "/admin-panel/cycles/create/",
+    "name": "admin_create_cycle"
+  },
+  {
+    "method": "GET",
+    "path": "/admin-panel/members/",
+    "name": "admin_members"
+  },
+  {
+    "method": "POST",
+    "path": "/admin-panel/members/:member_id/delete/",
+    "name": "admin_delete_member"
+  },
+  {
+    "method": "POST",
+    "path": "/admin-panel/members/add/",
+    "name": "admin_add_member"
+  },
+  {
+    "method": "POST",
+    "path": "/admin-panel/members/import-csv/",
+    "name": "admin_import_members_csv"
+  },
+  {
+    "method": "POST",
+    "path": "/admin-panel/messages/jobs/:job_id/resolve/",
+    "name": "admin_resolve_delivery"
+  },
+  {
+    "method": "POST",
+    "path": "/admin-panel/messages/retry-failed/",
+    "name": "admin_retry_failed_messages"
+  },
+  {
+    "method": "POST",
+    "path": "/admin-panel/messages/send-test/",
+    "name": "admin_send_test_dm"
+  },
+  {
+    "method": "GET",
+    "path": "/admin-panel/messages/send/",
+    "name": "admin_send_message"
+  },
+  {
+    "method": "POST",
+    "path": "/admin-panel/messages/send/",
+    "name": "admin_send_message"
+  },
+  {
+    "method": "POST",
+    "path": "/admin-panel/options/:option_id/delete/",
+    "name": "admin_delete_option"
+  },
+  {
+    "method": "POST",
+    "path": "/admin-panel/questions/:question_id/delete/",
+    "name": "admin_delete_question"
+  },
+  {
+    "method": "POST",
+    "path": "/admin-panel/questions/:question_id/options/add/",
+    "name": "admin_add_option"
+  },
+  {
+    "method": "POST",
+    "path": "/admin-panel/reports/:report_id/memo/",
+    "name": "admin_save_report_memo"
+  },
+  {
+    "method": "GET",
+    "path": "/admin-panel/reports/:report_id/pdf/",
+    "name": "admin_report_pdf"
+  },
+  {
+    "method": "GET",
+    "path": "/admin-panel/reports/:report_id/preview-html/",
+    "name": "admin_preview_report_html"
+  },
+  {
+    "method": "POST",
+    "path": "/admin-panel/reports/:report_id/regenerate/",
+    "name": "admin_regenerate_report"
+  },
+  {
+    "method": "GET",
+    "path": "/admin-panel/status/",
+    "name": "admin_status"
+  },
+  {
+    "method": "GET",
+    "path": "/admin-panel/validation/",
+    "name": "admin_validation"
+  },
+  {
+    "method": "POST",
+    "path": "/admin-panel/validation/answers/:answer_id/toggle-exclusion/",
+    "name": "admin_toggle_answer_exclusion"
+  },
+  {
+    "method": "POST",
+    "path": "/admin-panel/validation/normalize/",
+    "name": "admin_apply_normalization"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/",
+    "name": null
+  },
+  {
+    "method": "GET",
+    "path": "/admin/login/",
+    "name": null
+  },
+  {
+    "method": "POST",
+    "path": "/admin/login/",
+    "name": null
+  },
+  {
+    "method": "GET",
+    "path": "/health/",
+    "name": null
+  },
+  {
+    "method": "GET",
+    "path": "/login/",
+    "name": "login"
+  },
+  {
+    "method": "POST",
+    "path": "/login/",
+    "name": "login"
+  },
+  {
+    "method": "GET",
+    "path": "/logout/",
+    "name": "logout"
+  },
+  {
+    "method": "GET",
+    "path": "/media/*",
+    "name": null
+  },
+  {
+    "method": "GET",
+    "path": "/review/:assignment_id/",
+    "name": "review_form"
+  },
+  {
+    "method": "POST",
+    "path": "/review/:assignment_id/",
+    "name": "review_form"
+  },
+  {
+    "method": "POST",
+    "path": "/review/:assignment_id/save-draft/",
+    "name": "save_draft"
+  },
+  {
+    "method": "GET",
+    "path": "/setup/",
+    "name": "setup_wizard"
+  },
+  {
+    "method": "POST",
+    "path": "/setup/",
+    "name": "setup_wizard"
+  },
+  {
+    "method": "GET",
+    "path": "/static/*",
+    "name": null
+  }
+]

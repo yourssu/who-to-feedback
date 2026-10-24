@@ -1,7 +1,7 @@
-import type { RouteName } from "../templates";
+import type { RouteName } from "#templates";
 import type { Context, Hono } from "hono";
 import type { DashboardViewModel, TemplateName } from "./view-models";
-import type { Repository, Row } from "../db";
+import type { Repository, Row } from "../repository";
 export interface Session {
   admin_id?: number;
   member_id?: number;

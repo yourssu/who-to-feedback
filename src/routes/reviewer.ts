@@ -1,4 +1,4 @@
-import { DomainError } from "../db";
+import { DomainError } from "../repository";
 import { now, owner, saveDraft, submitReview, textLabels } from "../domain";
 import type { Ctx, Session, HttpServices } from "../http/types";
 export function registerReviewerRoutes(services: HttpServices) {

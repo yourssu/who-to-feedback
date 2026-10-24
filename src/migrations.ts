@@ -1,4 +1,4 @@
-import type { Database } from "bun:sqlite";
+import type { DatabaseDriver } from "./repository";
 import { initialSchema } from "./schema";
 const migrations = [
   initialSchema,
@@ -8,7 +8,7 @@ const migrations = [
    ALTER TABLE jobs ADD COLUMN resolved_at TEXT;
    ALTER TABLE jobs ADD COLUMN resolution TEXT;`,
 ];
-export function applyMigrations(db: Database) {
+export function applyMigrations(db: DatabaseDriver) {
   db.exec(
     "CREATE TABLE IF NOT EXISTS schema_version(version INTEGER PRIMARY KEY)",
   );

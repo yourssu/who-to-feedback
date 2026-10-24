@@ -1,6 +1,7 @@
+import { createHash } from "node:crypto";
 import type { DeliveryPayload, JobRecord } from "./models";
 import { WebClient } from "@slack/web-api";
-import type { Repository, Row } from "./db";
+import type { Repository, Row } from "./repository";
 import { parseJobPayload } from "./job-payloads";
 import { now } from "./domain";
 import { closeDeliveredCycle } from "./deliveries";
@@ -141,7 +142,7 @@ export class JobRunner {
             return true;
           }
           pdfSource = report.html;
-          const currentHash = new Bun.CryptoHasher("sha256")
+          const currentHash = createHash("sha256")
             .update(report.html ?? "")
             .digest("hex");
           if (currentHash === p.html_hash) {

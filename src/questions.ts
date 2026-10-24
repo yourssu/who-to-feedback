@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DomainError, type Repository } from "./db";
+import { DomainError, type Repository } from "./repository";
 import { questionSchema } from "./domain";
 
 export function requireDraftCycle(repo: Repository, cycle: number) {

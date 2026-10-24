@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DomainError } from "../db";
+import { DomainError } from "../repository";
 import { now } from "../domain";
 import type { HttpServices } from "../http/types";
 export function registerCyclesRoutes(services: HttpServices) {

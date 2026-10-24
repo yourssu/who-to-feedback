@@ -1,0 +1,103 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "peerflow",
+  "main": "src/workers/index.ts",
+  "build": {
+    "command": "bun run scripts/workers/build.ts",
+    "watch_dir": ["core/templates", "core/static"],
+  },
+  "compatibility_date": "2026-10-23",
+  "compatibility_flags": ["nodejs_compat"],
+  "alias": {
+    "#templates": "./src/workers/templates.ts",
+    "#platform-default": "./src/workers/no-local-platform.ts",
+    "#report-files": "./src/workers/no-local-files.ts",
+  },
+  "assets": {
+    "directory": "./dist/assets",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+    "html_handling": "none",
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Peerflow"] }],
+  "observability": { "enabled": true },
+  "env": {
+    "staging": {
+      "name": "peerflow-staging",
+      "workers_dev": true,
+      "routes": [],
+      "vars": { "MOCK_SLACK_MODE": "true" },
+      "durable_objects": {
+        "bindings": [{ "name": "APP", "class_name": "Peerflow" }],
+      },
+      "r2_buckets": [
+        { "binding": "FILES", "bucket_name": "peerflow-staging-files" },
+      ],
+      "browser": { "binding": "BROWSER" },
+      "queues": {
+        "producers": [
+          { "binding": "GENERATE_QUEUE", "queue": "peerflow-staging-generate" },
+          { "binding": "DELIVERY_QUEUE", "queue": "peerflow-staging-delivery" },
+        ],
+        "consumers": [
+          {
+            "queue": "peerflow-staging-generate",
+            "max_batch_size": 1,
+            "max_concurrency": 1,
+            "max_retries": 3,
+            "dead_letter_queue": "peerflow-staging-dlq",
+          },
+          {
+            "queue": "peerflow-staging-delivery",
+            "max_batch_size": 1,
+            "max_concurrency": 1,
+            "max_retries": 3,
+            "dead_letter_queue": "peerflow-staging-dlq",
+          },
+        ],
+      },
+      "triggers": { "crons": ["*/5 * * * *"] },
+    },
+    "production": {
+      "name": "peerflow-production",
+      "limits": { "cpu_ms": 300000 },
+      "vars": { "MOCK_SLACK_MODE": "true" },
+      "durable_objects": {
+        "bindings": [{ "name": "APP", "class_name": "Peerflow" }],
+      },
+      "r2_buckets": [
+        { "binding": "FILES", "bucket_name": "peerflow-production-files" },
+      ],
+      "browser": { "binding": "BROWSER" },
+      "queues": {
+        "producers": [
+          {
+            "binding": "GENERATE_QUEUE",
+            "queue": "peerflow-production-generate",
+          },
+          {
+            "binding": "DELIVERY_QUEUE",
+            "queue": "peerflow-production-delivery",
+          },
+        ],
+        "consumers": [
+          {
+            "queue": "peerflow-production-generate",
+            "max_batch_size": 1,
+            "max_concurrency": 1,
+            "max_retries": 3,
+            "dead_letter_queue": "peerflow-production-dlq",
+          },
+          {
+            "queue": "peerflow-production-delivery",
+            "max_batch_size": 1,
+            "max_concurrency": 1,
+            "max_retries": 3,
+            "dead_letter_queue": "peerflow-production-dlq",
+          },
+        ],
+      },
+      "triggers": { "crons": ["*/5 * * * *"] },
+    },
+  },
+}

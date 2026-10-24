@@ -1,13 +1,11 @@
-import { readFileSync } from "node:fs";
+import { localFontBytes } from "#report-files";
 import { parse, type Font } from "opentype.js";
 let cached: Font | undefined;
+export function setReportFont(bytes: ArrayBuffer) {
+  cached = parse(bytes);
+}
 function font() {
-  if (!cached) {
-    const bytes = readFileSync("core/static/fonts/Pretendard-Regular.ttf");
-    cached = parse(
-      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
-    );
-  }
+  if (!cached) cached = parse(localFontBytes());
   return cached;
 }
 /** Inline chart images cannot inherit the surrounding report's embedded font. */

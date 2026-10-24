@@ -1,6 +1,6 @@
 import { invalidateReports } from "../reports";
 import { z } from "zod";
-import { DomainError, type Row } from "../db";
+import { DomainError, type Row } from "../repository";
 import type { Ctx, HttpServices } from "../http/types";
 export function registerValidationRoutes(services: HttpServices) {
   const { repo, route, page, flash, form, id, back } = services;

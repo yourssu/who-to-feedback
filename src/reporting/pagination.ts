@@ -1,4 +1,4 @@
-import type { Row } from "../db";
+import type { Row } from "../repository";
 /** Preserve every character while splitting long feedback into readable slide cards. */
 function chunks(value: string, maxLines: number) {
   const parts: string[] = [];

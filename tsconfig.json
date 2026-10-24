@@ -4,7 +4,7 @@
     "module": "Preserve",
     "moduleResolution": "Bundler",
     "lib": ["ESNext", "DOM"],
-    "types": ["bun"],
+    "types": ["bun", "@cloudflare/workers-types"],
     "strict": true,
     "noEmit": true,
     "esModuleInterop": true,

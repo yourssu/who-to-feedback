@@ -1,5 +1,5 @@
 import { sendReminders } from "../reminders";
-import { type Row } from "../db";
+import { type Row } from "../repository";
 import { closeCycle, startCycle } from "../domain";
 import type { Ctx, HttpServices } from "../http/types";
 export function registerStatusRoutes(services: HttpServices) {

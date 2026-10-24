@@ -1,6 +1,7 @@
+import { getPlatform } from "../platform";
 import { deleteCookie } from "hono/cookie";
 import { z } from "zod";
-import { DomainError } from "../db";
+import { DomainError } from "../repository";
 import { hash, now } from "../domain";
 import type { HttpServices } from "../http/types";
 export function registerAuthRoutes(services: HttpServices) {
@@ -36,9 +37,7 @@ export function registerAuthRoutes(services: HttpServices) {
       .parse(form(c));
     if (data.password !== data.password_confirm)
       throw new DomainError("비밀번호가 일치하지 않습니다.");
-    const password = await Bun.password.hash(data.password, {
-      algorithm: "argon2id",
-    });
+    const password = await getPlatform(repo).passwordHash(data.password);
     const admin = repo.transaction(() => {
       if (repo.one("SELECT id FROM admins LIMIT 1"))
         throw new DomainError("이미 초기 설정이 완료되었습니다.", 404);
@@ -69,10 +68,11 @@ export function registerAuthRoutes(services: HttpServices) {
     if (
       locked(key) ||
       !admin ||
-      !(await Bun.password.verify(
+      !(await getPlatform(repo).passwordVerify(
         String(data.password ?? ""),
         admin.password_hash,
-      ))
+      )) ||
+      locked(key)
     ) {
       fail(key);
       return page(c, "admin/login.html", {

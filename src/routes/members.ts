@@ -1,4 +1,4 @@
-import { DomainError } from "../db";
+import { DomainError } from "../repository";
 import { importMembers, memberSchema, now } from "../domain";
 import type { HttpServices } from "../http/types";
 export function registerMembersRoutes(services: HttpServices) {

@@ -111,3 +111,8 @@ output/
 *.sqlite3
 *.sqlite3-wal
 *.sqlite3-shm
+
+# Local Workers state and generated templates
+.wrangler/
+.dev.vars*
+src/workers/generated/

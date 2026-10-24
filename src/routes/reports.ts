@@ -1,5 +1,6 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
-import { DomainError } from "../db";
+import { DomainError } from "../repository";
 import { enqueue } from "../domain";
 import {
   checkLayouts,
@@ -7,16 +8,17 @@ import {
   publish,
   reportRows,
 } from "../reports";
-import { validateCustomTemplate } from "../templates";
+import { validateCustomTemplate } from "#templates";
 import type { HttpServices } from "../http/types";
 export function registerReportsRoutes(services: HttpServices) {
   const { repo, route, page, flash, form, id, back } = services;
-  route("admin_reports", "get", (c) =>
-    page(c, "admin_custom/reports.html", {
+  route("admin_reports", "get", async (c) => {
+    await repo.platform?.prepareReports?.(id(c));
+    return page(c, "admin_custom/reports.html", {
       cycle: repo.cycle(id(c)),
       reports: reportRows(repo, id(c)),
-    }),
-  );
+    });
+  });
   route("admin_delivery_checklist", "get", (c) =>
     page(c, "admin_custom/reports.html", {
       cycle: repo.cycle(id(c)),
@@ -44,7 +46,7 @@ export function registerReportsRoutes(services: HttpServices) {
         }),
     }),
   );
-  route("admin_preview_report_html", "get", (c) => {
+  route("admin_preview_report_html", "get", async (c) => {
     const report = repo.require("reports", id(c, "report_id"));
     if (!report.html)
       throw new DomainError("결과지가 아직 생성되지 않았습니다.", 404);
@@ -57,9 +59,17 @@ export function registerReportsRoutes(services: HttpServices) {
         "Content-Disposition",
         `attachment; filename="peer_review_${report.id}.html"`,
       );
+    if (repo.platform) {
+      const response = await repo.platform.artifact(
+        report.html,
+        "text/html; charset=utf-8",
+      );
+      response.headers.forEach((value, key) => c.header(key, value));
+      return c.newResponse(response.body, response.status as 200);
+    }
     return c.html(report.html);
   });
-  route("admin_report_pdf", "get", (c) => {
+  route("admin_report_pdf", "get", async (c) => {
     const report = repo.require("reports", id(c, "report_id"));
     if (!report.pdf || report.pdf_status !== "READY")
       throw new DomainError("PDF가 아직 준비되지 않았습니다.", 404);
@@ -67,6 +77,14 @@ export function registerReportsRoutes(services: HttpServices) {
       "Content-Disposition",
       `attachment; filename="peer_review_${report.id}.pdf"`,
     );
+    if (repo.platform) {
+      const response = await repo.platform.artifact(
+        report.pdf,
+        "application/pdf",
+      );
+      response.headers.forEach((value, key) => c.header(key, value));
+      return c.newResponse(response.body, response.status as 200);
+    }
     return c.body(new Uint8Array(report.pdf), 200, {
       "Content-Type": "application/pdf",
     });
@@ -109,7 +127,8 @@ export function registerReportsRoutes(services: HttpServices) {
     );
     return back(c, id(c));
   });
-  route("admin_run_layout_check", "post", (c) => {
+  route("admin_run_layout_check", "post", async (c) => {
+    await repo.platform?.prepareReports?.(id(c));
     repo.require("cycles", id(c));
     const passed = checkLayouts(repo, id(c));
     flash(

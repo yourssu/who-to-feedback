@@ -1,4 +1,4 @@
-import { DomainError, type Repository } from "./db";
+import { DomainError, type Repository } from "./repository";
 import { enqueue, now } from "./domain";
 export function sendReminders(repo: Repository, cycleId: number) {
   const cycle = repo.cycle(cycleId);
@@ -19,7 +19,7 @@ export function sendReminders(repo: Repository, cycleId: number) {
           member_id: reviewer,
           cycle_id: cycle.id,
           type: "REMINDER",
-          text: `[${cycle.title}] 아직 작성하지 않은 리뷰: ${names.join(", ")}\n${process.env.SITE_URL ?? "http://localhost:8000"}/`,
+          text: `[${cycle.title}] 아직 작성하지 않은 리뷰: ${names.join(", ")}\n${repo.platform?.siteUrl ?? process.env.SITE_URL ?? "http://localhost:8000"}/`,
         },
         `reminder:${cycle.id}:${reviewer}:${new Date().toISOString().slice(0, 10)}`,
       );

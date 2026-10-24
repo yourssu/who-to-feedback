@@ -1,4 +1,4 @@
-import { DomainError, type Repository } from "./db";
+import { DomainError, type Repository } from "./repository";
 import { now } from "./domain";
 export function resolveDelivery(
   repo: Repository,

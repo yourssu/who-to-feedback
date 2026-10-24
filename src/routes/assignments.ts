@@ -1,4 +1,4 @@
-import { DomainError } from "../db";
+import { DomainError } from "../repository";
 import { addAssignment } from "../domain";
 import type { HttpServices } from "../http/types";
 export function registerAssignmentsRoutes(services: HttpServices) {
