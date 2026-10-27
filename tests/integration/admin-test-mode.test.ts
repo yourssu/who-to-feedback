@@ -5,13 +5,13 @@ import { defaultPlatform } from "../../src/legacy/platform";
 import { startCycle } from "../../src/domain";
 import { deliver } from "../../src/workers/slack";
 
-test("canonical admin path, legacy redirects, and PIN visibility stay authenticated", async () => {
+test("test admin access, legacy redirects, and disabling test privileges", async () => {
   const repo = fixture();
   repo.platform = { ...defaultPlatform, testMode: true };
   startCycle(repo, 1);
   const client = new Client(createApp(repo));
-  expect((await client.request("/admin")).status).toBe(302);
-  expect((await client.request("/admin/cycles/1/status/")).status).toBe(302);
+  expect((await client.request("/admin")).status).toBe(200);
+  expect((await client.request("/admin/cycles/1/status/")).status).toBe(200);
   for (const path of ["/admin/", "/admin-panel", "/admin-panel/"]) {
     const response = await client.request(path);
     expect(response.status).toBe(308);
@@ -24,7 +24,7 @@ test("canonical admin path, legacy redirects, and PIN visibility stay authentica
   );
   expect(old.status).toBe(308);
   expect(old.headers.get("location")).toBe("/admin/cycles/1/start/?a=1");
-  await client.admin();
+
   expect((await client.request("/admin")).status).toBe(200);
   const enabled = await (
     await client.request("/admin/cycles/1/status/")
@@ -32,11 +32,10 @@ test("canonical admin path, legacy redirects, and PIN visibility stay authentica
   expect(enabled).toContain("data-test-pin");
   expect(enabled).toContain("테스트 모드");
   repo.platform.testMode = false;
-  const disabled = await (
-    await client.request("/admin/cycles/1/status/")
-  ).text();
-  expect(disabled).not.toContain("data-test-pin");
-  expect(disabled).not.toContain("테스트 모드");
+  expect((await client.request("/admin/cycles/1/status/")).status).toBe(302);
+  expect((await client.request("/admin")).status).toBe(302);
+  const anonymous = new Client(createApp(repo));
+  expect((await anonymous.request("/admin")).status).toBe(302);
 });
 
 test("explicit TEST_MODE suppresses real Slack even if MOCK_SLACK_MODE is false", async () => {
@@ -47,4 +46,19 @@ test("explicit TEST_MODE suppresses real Slack even if MOCK_SLACK_MODE is false"
     { member_id: 1, type: "TEST_DM", text: "test" },
     { TEST_MODE: "true", MOCK_SLACK_MODE: "false" },
   );
+});
+
+test("test admin writes still require CSRF", async () => {
+  const repo = fixture();
+  repo.platform = { ...defaultPlatform, testMode: true };
+  const app = createApp(repo);
+  expect(
+    (
+      await app.request("http://localhost/admin/cycles/create/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "bad" }),
+      })
+    ).status,
+  ).toBe(403);
 });

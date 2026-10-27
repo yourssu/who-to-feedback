@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body class="admin-app">
-  {% if test_mode %}<div class="banner banner-warning" role="status"><strong>테스트 모드</strong><span>실제 Slack 메시지는 전송되지 않습니다. 회차를 시작한 뒤 진행 상태에서 테스트 PIN을 확인하세요. 테스트 데이터는 저장됩니다.</span></div>{% endif %}
+  {% if test_mode %}<div class="banner banner-warning" role="status"><strong>테스트 모드</strong><span>로그인 없이 사용하는 공개 목업 환경입니다. 실제 Slack 메시지는 전송되지 않습니다. 진행 상태에서 리뷰어 PIN을 확인하세요. 테스트 변경 사항은 저장됩니다.</span></div>{% endif %}
   <div class="app-shell">
     <aside class="sidebar">
       <a class="brand" href="{{ url('admin_dashboard') }}" aria-label="PeerFlow 관리자 홈"><strong>PeerFlow</strong><span>YOURSSU ADMIN</span></a>

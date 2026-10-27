@@ -4,6 +4,7 @@ import type { DashboardViewModel, TemplateName } from "./view-models";
 import type { Repository, Row } from "../repository";
 export interface Session {
   admin_id?: number;
+  test_admin?: boolean;
   member_id?: number;
   member_name?: string;
   cycle_id?: number;

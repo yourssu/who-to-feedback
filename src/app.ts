@@ -148,6 +148,23 @@ export function createApp(repo: Repository) {
     const session: Session = stored
       ? JSON.parse(stored.data)
       : { csrf: randomToken() };
+    // A test privilege must never survive switching back to ordinary mode.
+    if (session.test_admin && !platform.testMode) {
+      delete session.admin_id;
+      delete session.test_admin;
+    }
+    if (
+      platform.testMode &&
+      (c.req.path === "/admin" || c.req.path.startsWith("/admin/"))
+    ) {
+      repo.run(
+        "INSERT OR IGNORE INTO admins(username,email,password_hash) VALUES ('peerflow-demo-admin','demo@example.invalid','test-mode-only')",
+      );
+      session.admin_id = repo.one(
+        "SELECT id FROM admins WHERE username='peerflow-demo-admin'",
+      )!.id;
+      session.test_admin = true;
+    }
     c.set("session", session);
     c.set("token", token);
     c.set("body", {});

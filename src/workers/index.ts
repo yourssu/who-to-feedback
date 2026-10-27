@@ -1,3 +1,4 @@
+import { seedDemo } from "../demo";
 import { createHash } from "node:crypto";
 import { DurableObject } from "cloudflare:workers";
 import { Repository } from "../repository";
@@ -15,24 +16,37 @@ interface Env {
   APP: DurableObjectNamespace<Peerflow>;
   ASSETS: Fetcher;
   FILES: R2Bucket;
+  TEST_FILES?: R2Bucket;
   BROWSER: Fetcher;
-  GENERATE_QUEUE: Queue<{ id: number }>;
-  DELIVERY_QUEUE: Queue<{ id: number }>;
+  GENERATE_QUEUE: Queue<{ id: number; testMode?: boolean }>;
+  DELIVERY_QUEUE: Queue<{ id: number; testMode?: boolean }>;
   SITE_URL?: string;
   TEST_MODE?: string;
   MOCK_SLACK_MODE: string;
   SLACK_BOT_TOKEN?: string;
 }
-const instance = (env: Env) => env.APP.get(env.APP.idFromName("peerflow-v1"));
+const instance = (env: Env) =>
+  env.APP.get(
+    env.APP.idFromName(
+      env.TEST_MODE === "true" ? "peerflow-demo-v1" : "peerflow-v1",
+    ),
+  );
 export default {
   async fetch(request: Request, env: Env) {
     if (new URL(request.url).pathname.startsWith("/static/"))
       return env.ASSETS.fetch(request);
     return instance(env).fetch(request);
   },
-  async queue(batch: MessageBatch<{ id: number }>, env: Env) {
+  async queue(
+    batch: MessageBatch<{ id: number; testMode?: boolean }>,
+    env: Env,
+  ) {
     for (const message of batch.messages) {
       try {
+        if ((message.body.testMode === true) !== (env.TEST_MODE === "true")) {
+          message.ack();
+          continue;
+        }
         await instance(env).processJob(message.body.id);
         message.ack();
       } catch (error) {
@@ -44,12 +58,17 @@ export default {
   async scheduled(_event: ScheduledController, env: Env) {
     await instance(env).maintenance();
   },
-} satisfies ExportedHandler<Env, { id: number }>;
+} satisfies ExportedHandler<Env, { id: number; testMode?: boolean }>;
 
 export class Peerflow extends DurableObject<Env> {
   private repo: Repository;
 
   constructor(ctx: DurableObjectState, env: Env) {
+    if (env.TEST_MODE === "true") {
+      if (!env.TEST_FILES)
+        throw new Error("TEST_MODE requires isolated TEST_FILES bucket");
+      env = { ...env, FILES: env.TEST_FILES };
+    }
     super(ctx, env);
     const db = new DurableSqlite(ctx.storage);
     applyMigrations(db);
@@ -83,6 +102,23 @@ export class Peerflow extends DurableObject<Env> {
       }
     });
     this.repo = new Repository(db, platform(env));
+    if (env.TEST_MODE === "true") {
+      this.repo.transaction(() => {
+        db.exec(
+          "CREATE TABLE IF NOT EXISTS demo_seed(version INTEGER PRIMARY KEY)",
+        );
+        if (!this.repo.one("SELECT version FROM demo_seed WHERE version=1")) {
+          const cycle = seedDemo(this.repo);
+          enqueue(
+            this.repo,
+            "GENERATE",
+            { cycle_id: cycle, sample: true },
+            "demo-initial-reports",
+          );
+          this.repo.run("INSERT INTO demo_seed(version) VALUES (1)");
+        }
+      });
+    }
   }
   async fetch(request: Request) {
     // Header is accepted only from Cloudflare's ingress; no X-Real-IP trust.
@@ -115,7 +151,7 @@ export class Peerflow extends DurableObject<Env> {
           ["GENERATE", "PDF"].includes(job.kind)
             ? this.env.GENERATE_QUEUE
             : this.env.DELIVERY_QUEUE
-        ).send({ id: job.id });
+        ).send({ id: job.id, testMode: this.env.TEST_MODE === "true" });
       } catch (error) {
         this.repo.run("UPDATE jobs SET queued_at=0 WHERE id=?", job.id);
         console.error("outbox dispatch failed", job.id, error);

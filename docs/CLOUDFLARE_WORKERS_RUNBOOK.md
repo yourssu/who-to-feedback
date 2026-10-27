@@ -146,12 +146,22 @@ node tests/workers/remote.mjs
 
 ## 직접 테스트하기: TEST_MODE
 
-Cloudflare 대시보드 → Workers & Pages → peerflow-staging → Settings → Variables and Secrets에서 문자열 `TEST_MODE=true`를 설정하고 Deploy한다. `false`로 설정하거나 제거하면 테스트 PIN 표시는 꺼진다. 저장소의 staging 기본값은 true, production은 false이다. Wrangler 재배포는 저장소 설정을 적용하므로 영구 변경은 `wrangler.jsonc`도 함께 수정한다.
+Cloudflare 대시보드 → Workers & Pages → peerflow-staging → Settings → Variables and Secrets에서 문자열 `TEST_MODE=true`를 설정하고 Deploy한다. `false`로 설정하거나 제거하면 일반 인증 모드로 돌아간다. staging 기본값은 true, production은 false이다. Wrangler 재배포는 저장소 설정을 적용하므로 영구 변경은 `wrangler.jsonc`도 함께 수정한다.
 
-1. `/admin`에 접속해 관리자 계정으로 로그인한다. `/admin/`과 이전 `/admin-panel/...`는 새 관리자 경로로 308 이동한다.
-2. 팀원 2명 이상, 문항, 리뷰 매칭을 만들고 회차를 시작한다.
-3. 관리자 **진행 상태** 화면의 **테스트용 리뷰어 PIN**을 확인한다. PIN은 관리자 인증 후에만, 마감 전 ACTIVE 회차에서만 보인다.
-4. 별도 브라우저/시크릿 창의 `/login/`에서 PIN으로 로그인하고 리뷰를 제출한다. 같은 창에서 로그인하면 세션이 리뷰어로 교체되므로 관리자 창과 분리한다.
-5. 관리자에서 마감 → 결과 HTML/PDF 확인 → 승인·Mock 발송을 시험한다.
+- 테스트 모드의 `/admin`은 **로그인 없이 접근 가능한 공개 관리자 화면**이다. 실제 개인정보나 운영 데이터를 입력하지 않는다. CSRF 검사는 유지한다.
+- 일반 DB `peerflow-v1`과 목업 DB `peerflow-demo-v1`을 분리한다. R2도 `TEST_FILES` 바인딩(`peerflow-staging-demo-files`)을 사용해 일반 파일과 정리 작업이 섞이지 않게 한다. 다른 환경에서 활성화하려면 별도 TEST_FILES 버킷 바인딩이 필요하다.
+- 목업 DB 최초 실행 시 리뷰어 3명(김유어·박수·이온), 문항 4종, 상호 매칭 6건, 제출 완료 리뷰 4건과 미제출 리뷰 2건을 한 트랜잭션으로 생성한다. 샘플 보고서 생성 작업도 등록한다. 재접속·재배포로 사용자의 테스트 변경을 덮어쓰지 않는다.
+- `/admin` → 진행 상태 → 테스트용 리뷰어 PIN을 확인한다. 별도 시크릿 창의 `/login/`에서 김유어의 PIN으로 로그인하면 남은 리뷰를 직접 작성할 수 있다. 기본 목업 회차 마감은 생성일로부터 7일 뒤이며 이후에는 새 회차를 만들 수 있다.
+- 결과 관리에서 기존 작성된 리뷰의 미리보기와 HTML/PDF를 확인한다. 제출 이후 최신 결과가 필요하면 샘플 생성이나 재생성을 실행한다. 회차 마감·승인·Mock 발송도 테스트할 수 있다.
+- `TEST_MODE=true`이면 `MOCK_SLACK_MODE=false`여도 실제 Slack 호출은 하지 않는다. 제출·승인·발송 완료 상태는 목업 DB에 저장된다.
+- 테스트 관리자 세션은 모드를 끄면 관리자 권한을 잃는다. 모드가 바뀌기 전에 큐에 들어간 다른 모드의 메시지는 실행하지 않으며, 해당 모드로 돌아오면 outbox/Cron이 미완료 작업을 복구한다.
 
-`TEST_MODE=true`이면 `MOCK_SLACK_MODE=false`여도 실제 Slack 호출은 하지 않는다. 테스트 모드는 인증을 우회하거나 기존 데이터를 초기화하지 않으며 제출·승인·발송 완료 상태는 DB에 실제로 저장된다. 테스트 데이터 전용 staging에서 사용한다. 테스트 모드를 끈 뒤에도 `MOCK_SLACK_MODE=true`라면 발송은 여전히 Mock이다.
+### 2026-10-27 원격 확인
+
+배포 버전 `f6d88ff2-5a9a-4040-a237-1d074975f361`. 로그인 없는 관리자 접근, 이전 경로 리다이렉트, 목업 3명과 PIN, 네 가지 문항의 실제 리뷰 제출, 제출률 5/6, 기존 목업 리뷰 미리보기, 실제 R2/Browser Run 샘플 PDF를 확인했다. 증거는 ignored `artifacts/demo-remote-1793084771960/`에 있다. 검증 후 미제출 리뷰 1건을 남겼다.
+
+```sh
+PEERFLOW_STAGING_URL=https://peerflow-staging.twitchproxy0744.workers.dev node tests/workers/remote-demo.mjs
+```
+
+이 테스트는 최초 목업 상태에서 리뷰 한 건을 제출한다. 테스트 데이터를 자동으로 초기화하지 않는다.
