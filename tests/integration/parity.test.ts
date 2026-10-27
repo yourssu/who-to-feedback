@@ -26,13 +26,13 @@ afterEach(() => repos.splice(0).forEach((r) => r.db.close()));
 test("회차 날짜 오류를 거부하고 한국 시간 입력을 UTC로 저장한다", async () => {
   const { repo, client } = setup();
   await client.admin();
-  await client.request("/admin-panel/cycles/create/", "POST", {
+  await client.request("/admin/cycles/create/", "POST", {
     title: "역전",
     start_at: "2026-12-02T10:00",
     end_at: "2026-12-01T10:00",
   });
   expect(repo.all("SELECT * FROM cycles")).toHaveLength(1);
-  await client.request("/admin-panel/cycles/create/", "POST", {
+  await client.request("/admin/cycles/create/", "POST", {
     title: "정상",
     start_at: "2026-12-01T10:00",
     end_at: "2026-12-02T10:00",
@@ -47,11 +47,9 @@ test("부서별 자동 매칭은 같은 부서만 연결하고 ACTIVE 신규 리
   await client.admin();
   repo.run("DELETE FROM assignments");
   repo.run("UPDATE members SET department='Other' WHERE id=3");
-  await client.request(
-    "/admin-panel/cycles/1/assignments/auto-match/",
-    "POST",
-    { match_type: "SAME_DEPT" },
-  );
+  await client.request("/admin/cycles/1/assignments/auto-match/", "POST", {
+    match_type: "SAME_DEPT",
+  });
   expect(
     repo.assignments(1).map((a) => [a.reviewer_id, a.reviewee_id]),
   ).toEqual([
@@ -67,7 +65,7 @@ test("부서별 자동 매칭은 같은 부서만 연결하고 ACTIVE 신규 리
     "Engineering",
     now(),
   );
-  await client.request("/admin-panel/cycles/1/assignments/add/", "POST", {
+  await client.request("/admin/cycles/1/assignments/add/", "POST", {
     reviewer_id: 4,
     reviewee_id: 1,
   });
@@ -98,17 +96,16 @@ test("로그아웃·재로그인 후 임시 답변을 복원하고 GET code로 �
 test("문항과 선택지는 ACTIVE 이후 잠기고 비객관식 선택지는 거부한다", async () => {
   const { repo, client } = setup();
   await client.admin();
-  await client.request("/admin-panel/questions/1/options/add/", "POST", {
+  await client.request("/admin/questions/1/options/add/", "POST", {
     option_text: "부적절",
   });
   expect(repo.all("SELECT * FROM options WHERE question_id=1")).toHaveLength(0);
   const option = repo.one("SELECT id FROM options WHERE question_id=3")!;
-  await client.request(`/admin-panel/options/${option.id}/delete/`, "POST", {});
+  await client.request(`/admin/options/${option.id}/delete/`, "POST", {});
   expect(repo.one("SELECT id FROM options WHERE id=?", option.id)).toBeNull();
   startCycle(repo, 1);
   expect(
-    (await client.request("/admin-panel/questions/1/delete/", "POST", {}))
-      .status,
+    (await client.request("/admin/questions/1/delete/", "POST", {})).status,
   ).toBe(403);
   expect(repo.require("questions", 1).id).toBe(1);
 });
@@ -117,18 +114,16 @@ test("빈 이력·다중 이력과 보고서 운영 메모를 표시한다", asy
   const { repo, client } = setup();
   await client.admin();
   expect(
-    await (await client.request("/admin-panel/cycles/1/history/")).text(),
+    await (await client.request("/admin/cycles/1/history/")).text(),
   ).toContain("기록된 변경 이력이 없습니다.");
   repo.log(1, "첫 변경");
   repo.log(1, "두 번째 변경");
-  const page = await (
-    await client.request("/admin-panel/cycles/1/history/")
-  ).text();
+  const page = await (await client.request("/admin/cycles/1/history/")).text();
   expect(page).toContain("첫 변경");
   expect(page).toContain("두 번째 변경");
   generateAll(repo, 1);
   const report = repo.one("SELECT id FROM reports LIMIT 1")!;
-  await client.request(`/admin-panel/reports/${report.id}/memo/`, "POST", {
+  await client.request(`/admin/reports/${report.id}/memo/`, "POST", {
     admin_memo: "확인 완료",
   });
   expect(repo.require("reports", report.id).admin_memo).toBe("확인 완료");
@@ -168,14 +163,14 @@ test("다른 회차 매칭을 숨기고 품질·정렬·샘플·레이아웃 규
 test("문항 변경은 버전과 이력을 갱신하고 이름 정규화는 원본을 보존한다", async () => {
   const { repo, client } = setup();
   await client.admin();
-  await client.request("/admin-panel/cycles/1/questions/add/", "POST", {
+  await client.request("/admin/cycles/1/questions/add/", "POST", {
     order: 5,
     question_type: "TEXT",
     content: "추가 질문",
   });
   expect(repo.cycle(1).version).toBe("v2");
   expect(repo.all("SELECT * FROM version_logs")).toHaveLength(1);
-  await client.request("/admin-panel/validation/normalize/", "POST", {
+  await client.request("/admin/validation/normalize/", "POST", {
     raw_names: ["Alice"],
     target_name: "ALICE",
   });
@@ -242,7 +237,7 @@ test("이미지 업로드·인증된 조회·보고서 data URL 주입을 연결
     form.set("image", new File([bytes], "question.png", { type: "image/png" }));
     form.set("csrfmiddlewaretoken", client.cookies.get("csrftoken")!);
     const response = await client.app.request(
-      "http://localhost/admin-panel/cycles/1/questions/add/",
+      "http://localhost/admin/cycles/1/questions/add/",
       {
         method: "POST",
         body: form,

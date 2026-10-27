@@ -149,7 +149,7 @@ try {
   );
   assert(
     (
-      await fetch(base + "/admin-panel/cycles/create/", {
+      await fetch(base + "/admin/cycles/create/", {
         method: "POST",
         body: "{}",
         headers: { "Content-Type": "application/json" },
@@ -206,18 +206,18 @@ try {
   }
   console.log("PASS setup, authentication, media, CSRF, drafts and submission");
   for (const path of [
-    "/admin-panel/",
-    "/admin-panel/members/",
-    `/admin-panel/cycles/${fixture.cycle}/history/`,
-    `/admin-panel/cycles/${fixture.cycle}/validation/`,
-    "/admin-panel/messages/send/",
+    "/admin",
+    "/admin/members/",
+    `/admin/cycles/${fixture.cycle}/history/`,
+    `/admin/cycles/${fixture.cycle}/validation/`,
+    "/admin/messages/send/",
   ]) {
     assert((await admin.request(path)).ok, `Admin screen failed: ${path}`);
   }
   assert(
     (
       await admin.request(
-        `/admin-panel/cycles/${fixture.cycle}/generate-reports/`,
+        `/admin/cycles/${fixture.cycle}/generate-reports/`,
         {},
       )
     ).status === 302,
@@ -242,7 +242,7 @@ try {
   );
   mkdirSync("artifacts/docker", { recursive: true });
   for (const r of reports) {
-    const path = `/admin-panel/reports/${r.id}/pdf/`;
+    const path = `/admin/reports/${r.id}/pdf/`;
     assert(
       (await anonymous.request(path)).status === 302,
       "PDF exposed without login",
@@ -263,7 +263,7 @@ try {
     );
   }
   assert(
-    (await admin.request(`/admin-panel/cycles/${fixture.cycle}/publish/`, {}))
+    (await admin.request(`/admin/cycles/${fixture.cycle}/publish/`, {}))
       .status === 302,
     "Approval failed",
   );
@@ -284,12 +284,9 @@ try {
     `Restart port ${previousBase === base ? "preserved" : "reassigned; refreshed client endpoint"}`,
   );
   await healthy();
+  assert((await admin.request("/admin")).ok, "Session was lost after restart");
   assert(
-    (await admin.request("/admin-panel/")).ok,
-    "Session was lost after restart",
-  );
-  assert(
-    (await admin.request(`/admin-panel/reports/${reports[0].id}/pdf/`)).ok,
+    (await admin.request(`/admin/reports/${reports[0].id}/pdf/`)).ok,
     "Stored PDF was lost after restart",
   );
   await command(["docker", "stop", name]);

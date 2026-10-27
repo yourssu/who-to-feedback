@@ -114,11 +114,11 @@ try {
   assert.equal((await query("SELECT count(*) n FROM admins"))[0].n, 1);
   assert.equal((await request("/setup/")).status, 404);
   for (const path of [
-    "/admin-panel/",
-    "/admin-panel/members/",
-    "/admin-panel/status/",
-    "/admin-panel/validation/",
-    "/admin-panel/messages/send/",
+    "/admin",
+    "/admin/members/",
+    "/admin/status/",
+    "/admin/validation/",
+    "/admin/messages/send/",
   ])
     assert.equal((await request(path)).status, 200, path);
   assert.equal(
@@ -127,7 +127,7 @@ try {
   );
   assert.equal(
     (
-      await request("/admin-panel/members/add/", {
+      await request("/admin/members/add/", {
         name: "Alice",
         email: "alice@example.com",
         department: "Team",
@@ -137,7 +137,7 @@ try {
   );
   assert.equal(
     (
-      await request("/admin-panel/members/add/", {
+      await request("/admin/members/add/", {
         name: "Bob",
         email: "bob@example.com",
         department: "Team",
@@ -152,7 +152,7 @@ try {
   const cycle = (await query("SELECT id FROM cycles"))[0].id;
   assert.equal(
     (
-      await request(`/admin-panel/cycles/${cycle}/questions/add/`, {
+      await request(`/admin/cycles/${cycle}/questions/add/`, {
         order: 1,
         question_type: "RATING",
         content: "협업 역량",
@@ -181,8 +181,7 @@ try {
     new File([imageBytes], "pixel.png", { type: "image/png" }),
   );
   assert.equal(
-    (await request(`/admin-panel/cycles/${cycle}/questions/add/`, imageForm))
-      .status,
+    (await request(`/admin/cycles/${cycle}/questions/add/`, imageForm)).status,
     302,
   );
   const imageQuestion = (
@@ -199,7 +198,7 @@ try {
 
   assert.equal(
     (
-      await request(`/admin-panel/cycles/${cycle}/assignments/add/`, {
+      await request(`/admin/cycles/${cycle}/assignments/add/`, {
         reviewer_id: a.id,
         reviewee_id: b.id,
       })
@@ -226,7 +225,7 @@ try {
           })),
         );
         const page = await context.newPage();
-        const response = await page.goto(new URL("/admin-panel/", base).href);
+        const response = await page.goto(new URL("/admin", base).href);
         assert.equal(response.status(), 200);
         assert.ok(!page.url().includes("/login/"));
         await page.screenshot({
@@ -244,7 +243,7 @@ try {
   );
   const before = (await query("SELECT version FROM cycles"))[0].version;
   await request(
-    `/admin-panel/cycles/${cycle}/questions/add/`,
+    `/admin/cycles/${cycle}/questions/add/`,
     { order: 2, question_type: "TEXT", content: "롤백 확인", category: "기본" },
     cookies,
     { headers: { Accept: "application/json" } },
@@ -262,7 +261,7 @@ try {
   const form = new FormData();
   form.set("csv_file", new File([csv], "members.csv", { type: "text/csv" }));
   const csvStart = performance.now();
-  const csvResponse = await request("/admin-panel/members/import-csv/", form);
+  const csvResponse = await request("/admin/members/import-csv/", form);
   assert.equal(csvResponse.status, 302, await csvResponse.text());
   assert.equal((await query("SELECT count(*) n FROM members"))[0].n, 10002);
   console.log(
@@ -277,7 +276,7 @@ try {
       "bad.csv",
     ),
   );
-  await request("/admin-panel/members/import-csv/", bad);
+  await request("/admin/members/import-csv/", bad);
   assert.equal(
     (
       await query(
@@ -286,7 +285,7 @@ try {
     )[0].n,
     0,
   );
-  await request(`/admin-panel/cycles/${cycle}/start/`, {});
+  await request(`/admin/cycles/${cycle}/start/`, {});
   assert.equal((await query("SELECT status FROM cycles"))[0].status, "ACTIVE");
   const pin = (await query("SELECT code FROM pins"))[0].code;
   const reviewer = new Map();
@@ -319,7 +318,7 @@ try {
     (await query("SELECT rating_value FROM answers"))[0].rating_value,
     5,
   );
-  await request(`/admin-panel/cycles/${cycle}/close/`, {});
+  await request(`/admin/cycles/${cycle}/close/`, {});
   const deadline = Date.now() + 300000;
   let report;
   while (Date.now() < deadline) {
@@ -340,15 +339,15 @@ try {
   );
   assert.match(report.html, /^r2:reports\/[a-f0-9]{64}-[a-f0-9-]{36}\.html$/);
   assert.equal(
-    (await request(`/admin-panel/reports/${report.id}/preview-html/`)).status,
+    (await request(`/admin/reports/${report.id}/preview-html/`)).status,
     200,
   );
-  const pdf = await request(`/admin-panel/reports/${report.id}/pdf/`);
+  const pdf = await request(`/admin/reports/${report.id}/pdf/`);
   assert.equal(pdf.status, 200);
   assert.ok(pdf.headers.get("content-disposition")?.includes(".pdf"));
   const bytes = Buffer.from(await pdf.arrayBuffer());
   assert.equal(bytes.subarray(0, 5).toString(), "%PDF-");
-  await request(`/admin-panel/cycles/${cycle}/publish/`, {});
+  await request(`/admin/cycles/${cycle}/publish/`, {});
   const sentDeadline = Date.now() + 10000;
   while (
     Date.now() < sentDeadline &&
@@ -379,15 +378,11 @@ try {
     ),
   );
   assert.equal(
-    (
-      await request(
-        `/admin-panel/cycles/${customCycle}/upload-template/`,
-        custom,
-      )
-    ).status,
+    (await request(`/admin/cycles/${customCycle}/upload-template/`, custom))
+      .status,
     302,
   );
-  await request(`/admin-panel/cycles/${customCycle}/sample-reports/`, {});
+  await request(`/admin/cycles/${customCycle}/sample-reports/`, {});
   const customDeadline = Date.now() + 90000;
   let customReport;
   while (Date.now() < customDeadline) {
@@ -403,9 +398,7 @@ try {
     JSON.stringify(await query("SELECT kind,status,error FROM jobs")),
   );
   await mkdir("artifacts/workers", { recursive: true });
-  const customPdf = await request(
-    `/admin-panel/reports/${customReport.id}/pdf/`,
-  );
+  const customPdf = await request(`/admin/reports/${customReport.id}/pdf/`);
   await writeFile(
     "artifacts/workers/custom.pdf",
     Buffer.from(await customPdf.arrayBuffer()),

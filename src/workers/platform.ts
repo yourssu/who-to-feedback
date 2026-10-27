@@ -6,12 +6,14 @@ export interface FilesEnv {
   ASSETS: Fetcher;
   FILES: R2Bucket;
   SITE_URL?: string;
+  TEST_MODE?: string;
 }
 const fontUris: Record<string, string> = {};
 let fontLoaded: Promise<void> | undefined;
 export function platform(env: FilesEnv): Platform {
   return {
     siteUrl: env.SITE_URL,
+    testMode: env.TEST_MODE === "true",
     secureCookies: true,
     passwordHash,
     passwordVerify,

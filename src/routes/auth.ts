@@ -18,9 +18,6 @@ export function registerAuthRoutes(services: HttpServices) {
     locked,
     fail,
   } = services;
-  app.get("/admin/", (c) =>
-    c.redirect(c.get("session").admin_id ? "/admin-panel/" : "/admin/login/"),
-  );
   route("setup_wizard", "get", (c) => {
     if (repo.one("SELECT id FROM admins LIMIT 1")) return c.notFound();
     return page(c, "auth/setup.html");
@@ -51,12 +48,12 @@ export function registerAuthRoutes(services: HttpServices) {
       );
     });
     rotate(c, { admin_id: admin });
-    return c.redirect("/admin-panel/");
+    return c.redirect("/admin");
   });
   app.get("/admin/login/", (c) =>
     page(c, "admin/login.html", {
       app_path: "/admin/login/",
-      next: "/admin-panel/",
+      next: "/admin",
       form: {},
     }),
   );
@@ -77,13 +74,13 @@ export function registerAuthRoutes(services: HttpServices) {
       fail(key);
       return page(c, "admin/login.html", {
         app_path: "/admin/login/",
-        next: "/admin-panel/",
+        next: "/admin",
         form: { errors: true, username: { value: username } },
       });
     }
     repo.run("DELETE FROM login_attempts WHERE key=?", key);
     rotate(c, { admin_id: admin.id });
-    return c.redirect("/admin-panel/");
+    return c.redirect("/admin");
   });
   route("login", "get", (c) =>
     page(c, "auth/login.html", { is_locked_out: locked(clientKey(c, "pin")) }),

@@ -44,7 +44,7 @@ test("문항 저장 실패 시 업로드 파일을 정리하고 DB 변경을 롤
     );
     form.set("csrfmiddlewaretoken", client.cookies.get("csrftoken")!);
     const response = await client.app.request(
-      "http://localhost/admin-panel/cycles/1/questions/add/",
+      "http://localhost/admin/cycles/1/questions/add/",
       {
         method: "POST",
         body: form,

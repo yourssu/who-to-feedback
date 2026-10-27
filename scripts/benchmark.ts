@@ -16,7 +16,7 @@ await c.admin();
 const times = [];
 for (let i = 0; i < 10; i++) {
   start = performance.now();
-  const res = await c.request(`/admin-panel/cycles/${cycle}/checklist/`);
+  const res = await c.request(`/admin/cycles/${cycle}/checklist/`);
   if (!res.ok) throw Error("HTTP");
   await res.text();
   times.push(performance.now() - start);

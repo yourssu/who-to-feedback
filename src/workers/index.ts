@@ -19,6 +19,7 @@ interface Env {
   GENERATE_QUEUE: Queue<{ id: number }>;
   DELIVERY_QUEUE: Queue<{ id: number }>;
   SITE_URL?: string;
+  TEST_MODE?: string;
   MOCK_SLACK_MODE: string;
   SLACK_BOT_TOKEN?: string;
 }

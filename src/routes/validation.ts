@@ -71,7 +71,7 @@ export function registerValidationRoutes(services: HttpServices) {
         );
     });
     flash(c, "원본 이름을 보존하고 정규화 이름을 저장했습니다.");
-    return c.redirect("/admin-panel/validation/");
+    return c.redirect("/admin/validation/");
   });
   route("admin_toggle_answer_exclusion", "post", (c) => {
     const a = repo.require("answers", id(c, "answer_id")),

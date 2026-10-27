@@ -51,7 +51,7 @@ export function registerMessagesRoutes(services: HttpServices) {
         ? "Slack 수신 확인을 기록했습니다."
         : "미수신 확인을 기록하고 재전송을 요청했습니다.",
     );
-    return c.redirect("/admin-panel/messages/send/");
+    return c.redirect("/admin/messages/send/");
   });
   route("admin_send_message", "get", messagePage);
   route("admin_send_message", "post", (c) => {
@@ -71,7 +71,7 @@ export function registerMessagesRoutes(services: HttpServices) {
         );
     });
     flash(c, `${members.length}명의 DM 발송 작업을 등록했습니다.`);
-    return c.redirect("/admin-panel/messages/send/");
+    return c.redirect("/admin/messages/send/");
   });
   route("admin_retry_failed_messages", "post", (c) => {
     retryFailedDeliveries(repo);
@@ -79,7 +79,7 @@ export function registerMessagesRoutes(services: HttpServices) {
       c,
       "실패가 확인된 발송 작업을 재등록했습니다. 전송 결과가 불명확한 작업은 자동 재발송하지 않습니다.",
     );
-    return c.redirect("/admin-panel/messages/send/");
+    return c.redirect("/admin/messages/send/");
   });
   route("admin_send_test_dm", "post", (c) => {
     const admin = repo.require("admins", c.get("session").admin_id!),
@@ -99,6 +99,6 @@ export function registerMessagesRoutes(services: HttpServices) {
       `test:${crypto.randomUUID()}`,
     );
     flash(c, "관리자 테스트 DM 작업을 등록했습니다.");
-    return c.redirect("/admin-panel/messages/send/");
+    return c.redirect("/admin/messages/send/");
   });
 }

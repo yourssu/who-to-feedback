@@ -1,3 +1,4 @@
+import { getPlatform } from "../platform";
 import { sendReminders } from "../reminders";
 import { type Row } from "../repository";
 import { closeCycle, startCycle } from "../domain";
@@ -12,6 +13,15 @@ export function registerStatusRoutes(services: HttpServices) {
     return page(c, "admin_custom/status.html", {
       cycle,
       active_menu: "status",
+      test_pins:
+        getPlatform(repo).testMode &&
+        cycle?.status === "ACTIVE" &&
+        !cycle.is_deadline_passed
+          ? repo.all(
+              "SELECT m.name, p.code FROM pins p JOIN members m ON m.id=p.member_id WHERE p.cycle_id=? ORDER BY m.id",
+              cycle.id,
+            )
+          : [],
       reviewer_status: reviewers.map((reviewer) => {
         const all = assignments.filter((a) => a.reviewer_id === reviewer.id),
           remaining = all.filter((a) => !a.is_submitted);

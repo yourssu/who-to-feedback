@@ -16,7 +16,7 @@ test("관리자 초기 설정은 한 번만 가능하고 로그인 시 세션을
   expect((await client.admin()).status).toBe(302);
   expect(client.cookies.get("peerflow_session")).not.toBe(old);
   expect((await client.request("/setup/")).status).toBe(404);
-  expect((await client.request("/admin-panel/")).status).toBe(200);
+  expect((await client.request("/admin")).status).toBe(200);
   expect(
     repo.one("SELECT password_hash FROM admins")!.password_hash,
   ).toStartWith("$argon2id$");
@@ -26,7 +26,7 @@ test("PIN 재로그인, 관리자 차단, 회차별 리뷰 접근을 검증한�
   expect((await client.login(repo)).status).toBe(302);
   expect((await client.request("/")).status).toBe(200);
   expect((await client.request("/review/2/")).status).toBe(403);
-  expect((await client.request("/admin-panel/")).status).toBe(302);
+  expect((await client.request("/admin")).status).toBe(302);
   await client.request("/logout/");
   expect((await client.login(repo)).status).toBe(302);
 });
@@ -79,18 +79,18 @@ test("모든 관리자 화면과 빈 상태를 렌더링한다", async () => {
   const { client } = setup();
   await client.admin();
   for (const path of [
-    "/admin-panel/",
-    "/admin-panel/members/",
-    "/admin-panel/validation/",
-    "/admin-panel/cycles/1/validation/",
-    "/admin-panel/cycles/1/questions/",
-    "/admin-panel/cycles/1/assignments/",
-    "/admin-panel/status/",
-    "/admin-panel/cycles/1/status/",
-    "/admin-panel/cycles/1/reports/",
-    "/admin-panel/cycles/1/checklist/",
-    "/admin-panel/cycles/1/history/",
-    "/admin-panel/messages/send/",
+    "/admin",
+    "/admin/members/",
+    "/admin/validation/",
+    "/admin/cycles/1/validation/",
+    "/admin/cycles/1/questions/",
+    "/admin/cycles/1/assignments/",
+    "/admin/status/",
+    "/admin/cycles/1/status/",
+    "/admin/cycles/1/reports/",
+    "/admin/cycles/1/checklist/",
+    "/admin/cycles/1/history/",
+    "/admin/messages/send/",
   ]) {
     const response = await client.request(path);
     expect(response.status, path).toBe(200);
@@ -104,9 +104,9 @@ test("이미지와 결과지는 비로그인 상태에서 노출하지 않는다
   expect(
     (await client.request("/media/reports_html/private.html")).status,
   ).toBe(302);
-  expect(
-    (await client.request("/admin-panel/reports/1/preview-html/")).status,
-  ).toBe(302);
+  expect((await client.request("/admin/reports/1/preview-html/")).status).toBe(
+    302,
+  );
   expect((await client.request("/static/css/style.css")).status).toBe(200);
 });
 test("빈 배열은 정상 로그인과 빈 화면으로 표시된다", async () => {
@@ -114,12 +114,12 @@ test("빈 배열은 정상 로그인과 빈 화면으로 표시된다", async ()
   const login = await client.request("/login/");
   expect(await login.text()).toContain("안전한 리뷰 공간");
   await client.admin();
-  const messages = await client.request("/admin-panel/messages/send/");
+  const messages = await client.request("/admin/messages/send/");
   expect(await messages.text()).not.toContain("실패한 DM 0건");
-  const validation = await client.request("/admin-panel/validation/");
+  const validation = await client.request("/admin/validation/");
   expect(await validation.text()).toContain("필수값 오류가 발견되지 않았어요.");
   repo.run("DELETE FROM cycles");
-  const overview = await client.request("/admin-panel/");
+  const overview = await client.request("/admin");
   expect(await overview.text()).toContain("첫 피어리뷰를 시작해 보세요");
 });
 test("동시에 온 제출과 임시 저장은 제출 결과를 덮어쓰지 않는다", async () => {

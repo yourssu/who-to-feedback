@@ -12,9 +12,13 @@ export class SlackError extends Error {
 export async function deliver(
   repo: Repository,
   p: DeliveryPayload,
-  env: { MOCK_SLACK_MODE: string; SLACK_BOT_TOKEN?: string },
+  env: {
+    TEST_MODE?: string;
+    MOCK_SLACK_MODE: string;
+    SLACK_BOT_TOKEN?: string;
+  },
 ) {
-  if (env.MOCK_SLACK_MODE === "true") return;
+  if (env.TEST_MODE === "true" || env.MOCK_SLACK_MODE === "true") return;
   if (env.MOCK_SLACK_MODE !== "false" || !env.SLACK_BOT_TOKEN)
     throw new SlackError("Explicit Slack mode and secret required", true);
   let uploadStarted = false;

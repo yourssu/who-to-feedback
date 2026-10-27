@@ -178,7 +178,7 @@ test("로그 없이 재시작한 UNKNOWN도 표시하고 수신 확인으로 마
   r.run("UPDATE jobs SET status='RUNNING' WHERE id=1");
   new JobRunner(r, success, mockPdf).recover();
   expect(
-    await (await client.request("/admin-panel/messages/send/")).text(),
+    await (await client.request("/admin/messages/send/")).text(),
   ).toContain("수신 확인 완료");
   resolveDelivery(r, 1, "SENT");
   expect(r.require("jobs", 1).status).toBe("DONE");

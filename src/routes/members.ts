@@ -21,7 +21,7 @@ export function registerMembersRoutes(services: HttpServices) {
       now(),
     );
     flash(c, "팀원이 등록되었습니다.");
-    return c.redirect("/admin-panel/members/");
+    return c.redirect("/admin/members/");
   });
   route("admin_delete_member", "post", (c) => {
     const member = id(c, "member_id");
@@ -37,7 +37,7 @@ export function registerMembersRoutes(services: HttpServices) {
         "리뷰에 참여한 팀원은 삭제할 수 없습니다. 매칭을 먼저 확인해 주세요.",
       );
     repo.run("DELETE FROM members WHERE id=?", member);
-    return c.redirect("/admin-panel/members/");
+    return c.redirect("/admin/members/");
   });
   route("admin_import_members_csv", "post", async (c) => {
     const file = form(c).csv_file;
@@ -51,6 +51,6 @@ export function registerMembersRoutes(services: HttpServices) {
       c,
       `CSV 등록 완료: 신규 ${result.created}명, 업데이트 ${result.updated}명`,
     );
-    return c.redirect("/admin-panel/members/");
+    return c.redirect("/admin/members/");
   });
 }

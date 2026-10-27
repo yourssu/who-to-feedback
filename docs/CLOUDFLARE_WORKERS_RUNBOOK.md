@@ -21,7 +21,7 @@ bun run dev:workers
 
 macOS 파일 감시 한도로 `EMFILE`이 발생하면 `CHOKIDAR_USEPOLLING=1 bun run dev:workers`로 실행한다. 로컬 Cron은 자동 실행되지 않으며 Wrangler가 출력하는 `/cdn-cgi/local/scheduled` URL로 수동 호출한다.
 
-접속 URL에서 `/setup/`으로 관리자를 만들고 `/admin-panel/`을 사용한다. Workers 쿠키는 항상 Secure이며 실제 배포는 HTTPS를 사용한다. 최신 Chromium은 localhost의 Secure 쿠키를 지원한다. 브라우저 환경에서 HTTP localhost 쿠키가 차단되면 로컬 HTTPS 옵션을 사용한다.
+접속 URL에서 `/setup/`으로 관리자를 만들고 `/admin`을 사용한다. Workers 쿠키는 항상 Secure이며 실제 배포는 HTTPS를 사용한다. 최신 Chromium은 localhost의 Secure 쿠키를 지원한다. 브라우저 환경에서 HTTP localhost 쿠키가 차단되면 로컬 HTTPS 옵션을 사용한다.
 
 `SITE_URL`을 지정하면 CSRF origin과 PIN/리마인더 링크의 기준으로 사용한다. 미지정 로컬·스테이징은 요청 origin을 사용한다. 운영에서는 반드시 실제 canonical HTTPS origin으로 설정한다. 프록시 IP는 Cloudflare ingress의 `CF-Connecting-IP`를 사용하고 `X-Real-IP`는 신뢰하지 않는다.
 
@@ -142,3 +142,16 @@ PEERFLOW_STAGING_MOCK_CONFIRMED=true \
 PEERFLOW_STAGING_CREDENTIALS=artifacts/remote-1792825909112/credentials.json \
 node tests/workers/remote.mjs
 ```
+
+
+## 직접 테스트하기: TEST_MODE
+
+Cloudflare 대시보드 → Workers & Pages → peerflow-staging → Settings → Variables and Secrets에서 문자열 `TEST_MODE=true`를 설정하고 Deploy한다. `false`로 설정하거나 제거하면 테스트 PIN 표시는 꺼진다. 저장소의 staging 기본값은 true, production은 false이다. Wrangler 재배포는 저장소 설정을 적용하므로 영구 변경은 `wrangler.jsonc`도 함께 수정한다.
+
+1. `/admin`에 접속해 관리자 계정으로 로그인한다. `/admin/`과 이전 `/admin-panel/...`는 새 관리자 경로로 308 이동한다.
+2. 팀원 2명 이상, 문항, 리뷰 매칭을 만들고 회차를 시작한다.
+3. 관리자 **진행 상태** 화면의 **테스트용 리뷰어 PIN**을 확인한다. PIN은 관리자 인증 후에만, 마감 전 ACTIVE 회차에서만 보인다.
+4. 별도 브라우저/시크릿 창의 `/login/`에서 PIN으로 로그인하고 리뷰를 제출한다. 같은 창에서 로그인하면 세션이 리뷰어로 교체되므로 관리자 창과 분리한다.
+5. 관리자에서 마감 → 결과 HTML/PDF 확인 → 승인·Mock 발송을 시험한다.
+
+`TEST_MODE=true`이면 `MOCK_SLACK_MODE=false`여도 실제 Slack 호출은 하지 않는다. 테스트 모드는 인증을 우회하거나 기존 데이터를 초기화하지 않으며 제출·승인·발송 완료 상태는 DB에 실제로 저장된다. 테스트 데이터 전용 staging에서 사용한다. 테스트 모드를 끈 뒤에도 `MOCK_SLACK_MODE=true`라면 발송은 여전히 Mock이다.

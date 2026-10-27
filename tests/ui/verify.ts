@@ -62,18 +62,18 @@ await capture(anonymous, "/admin/login/", "admin-error", "POST", {
   password: "wrong",
 });
 await admin.admin();
-await capture(admin, `/admin-panel/cycles/${cycle}/history/`, "history");
+await capture(admin, `/admin/cycles/${cycle}/history/`, "history");
 await reviewer.login(repo);
 await capture(reviewer, "/", "review-dashboard");
 await capture(reviewer, "/review/1/", "review-form");
 for (const [path, name] of [
-  ["/admin-panel/", "overview"],
-  ["/admin-panel/members/", "members"],
-  [`/admin-panel/cycles/${cycle}/questions/`, "questions"],
-  [`/admin-panel/cycles/${cycle}/assignments/`, "assignments"],
-  [`/admin-panel/cycles/${cycle}/status/`, "status"],
-  [`/admin-panel/cycles/${cycle}/validation/`, "validation"],
-  ["/admin-panel/messages/send/", "messages"],
+  ["/admin", "overview"],
+  ["/admin/members/", "members"],
+  [`/admin/cycles/${cycle}/questions/`, "questions"],
+  [`/admin/cycles/${cycle}/assignments/`, "assignments"],
+  [`/admin/cycles/${cycle}/status/`, "status"],
+  [`/admin/cycles/${cycle}/validation/`, "validation"],
+  ["/admin/messages/send/", "messages"],
 ])
   await capture(admin, path, name);
 // Capture operational states without changing the main demo data used by reports.
@@ -85,11 +85,7 @@ repo.run(
 repo.run(
   "UPDATE answers SET is_excluded_from_report=1,exclusion_reason='응답 확인 필요' WHERE id=(SELECT id FROM answers WHERE answer_text IS NOT NULL LIMIT 1)",
 );
-await capture(
-  admin,
-  `/admin-panel/cycles/${cycle}/validation/`,
-  "validation-issues",
-);
+await capture(admin, `/admin/cycles/${cycle}/validation/`, "validation-issues");
 repo.run("DELETE FROM validation_logs");
 repo.run("UPDATE answers SET is_excluded_from_report=0,exclusion_reason=''");
 const dm = repo.one("SELECT id FROM jobs WHERE kind='DM' LIMIT 1")!;
@@ -97,12 +93,12 @@ repo.run(
   "UPDATE jobs SET status='UNKNOWN',error='서버 재시작으로 확인 필요' WHERE id=?",
   dm.id,
 );
-await capture(admin, "/admin-panel/messages/send/", "messages-unknown");
+await capture(admin, "/admin/messages/send/", "messages-unknown");
 repo.run(
   "UPDATE jobs SET status='FAILED',error='Slack 권한 확인 필요' WHERE id=?",
   dm.id,
 );
-await capture(admin, "/admin-panel/messages/send/", "messages-failed");
+await capture(admin, "/admin/messages/send/", "messages-failed");
 repo.run("UPDATE jobs SET status='PENDING',error='' WHERE id=?", dm.id);
 closeCycle(repo, cycle);
 generateAll(repo, cycle);
@@ -113,18 +109,14 @@ for (const report of repo.all("SELECT pdf_status,error_log FROM reports"))
   if (report.pdf_status !== "READY")
     throw new Error(report.error_log || "PDF가 준비되지 않았습니다.");
 await capture(reviewer, "/review/1/", "review-locked");
-await capture(admin, `/admin-panel/cycles/${cycle}/reports/`, "reports");
-await capture(admin, `/admin-panel/cycles/${cycle}/checklist/`, "checklist");
+await capture(admin, `/admin/cycles/${cycle}/reports/`, "reports");
+await capture(admin, `/admin/cycles/${cycle}/checklist/`, "checklist");
 const report = repo.one("SELECT id FROM reports LIMIT 1")!;
 repo.run(
   "UPDATE reports SET pdf_status='FAILED',error_log='PDF 변환 실패: 재생성 필요' WHERE id=?",
   report.id,
 );
-await capture(
-  admin,
-  `/admin-panel/cycles/${cycle}/reports/`,
-  "reports-pdf-error",
-);
+await capture(admin, `/admin/cycles/${cycle}/reports/`, "reports-pdf-error");
 repo.run(
   "UPDATE reports SET pdf_status='READY',error_log='' WHERE id=?",
   report.id,
@@ -133,11 +125,11 @@ const emptyRepo = openDatabase(":memory:");
 const emptyClient = new Client(createApp(emptyRepo));
 await emptyClient.admin();
 for (const [path, name] of [
-  ["/admin-panel/", "overview-empty"],
-  ["/admin-panel/members/", "members-empty"],
-  ["/admin-panel/messages/send/", "messages-empty"],
-  ["/admin-panel/validation/", "validation-empty"],
-  ["/admin-panel/status/", "status-empty"],
+  ["/admin", "overview-empty"],
+  ["/admin/members/", "members-empty"],
+  ["/admin/messages/send/", "messages-empty"],
+  ["/admin/validation/", "validation-empty"],
+  ["/admin/status/", "status-empty"],
 ])
   await capture(emptyClient, path, name);
 emptyRepo.run(
@@ -146,10 +138,10 @@ emptyRepo.run(
   new Date().toISOString(),
 );
 for (const [path, name] of [
-  ["/admin-panel/cycles/1/history/", "history-empty"],
-  ["/admin-panel/cycles/1/questions/", "questions-empty"],
-  ["/admin-panel/cycles/1/assignments/", "assignments-empty"],
-  ["/admin-panel/cycles/1/reports/", "reports-empty"],
+  ["/admin/cycles/1/history/", "history-empty"],
+  ["/admin/cycles/1/questions/", "questions-empty"],
+  ["/admin/cycles/1/assignments/", "assignments-empty"],
+  ["/admin/cycles/1/reports/", "reports-empty"],
 ])
   await capture(emptyClient, path, name);
 emptyRepo.db.close();

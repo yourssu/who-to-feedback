@@ -76,6 +76,7 @@ export function createApp(repo: Repository) {
     s.messages = [];
     const html = templates.render(name, {
       latest_cycle: repo.latest(),
+      test_mode: platform.testMode === true,
       ...data,
       csrf_token: s.csrf,
       messages,
@@ -102,6 +103,22 @@ export function createApp(repo: Repository) {
   const id = (c: Ctx, name = "cycle_id") => numeric(c.req.param(name));
   const back = (c: Ctx, cycle: number, screen: RouteName = "admin_reports") =>
     c.redirect(url(screen, { cycle_id: cycle }));
+  // Preserve old bookmarks and form submissions while keeping one canonical namespace.
+  app.use("*", async (c, next) => {
+    const path = c.req.path;
+    if (
+      path === "/admin/" ||
+      path === "/admin-panel" ||
+      path === "/admin-panel/"
+    )
+      return c.redirect("/admin" + new URL(c.req.url).search, 308);
+    if (path.startsWith("/admin-panel/"))
+      return c.redirect(
+        path.replace("/admin-panel/", "/admin/") + new URL(c.req.url).search,
+        308,
+      );
+    return next();
+  });
   app.get("/health/", (c) => {
     repo.one("SELECT 1");
     return c.json({ status: "ok" });
@@ -179,7 +196,11 @@ export function createApp(repo: Repository) {
             403,
           );
       }
-      if (c.req.path.startsWith("/admin-panel/") && !session.admin_id)
+      if (
+        (c.req.path === "/admin" || c.req.path.startsWith("/admin/")) &&
+        c.req.path !== "/admin/login/" &&
+        !session.admin_id
+      )
         return c.redirect(
           "/admin/login/?next=" + encodeURIComponent(c.req.path),
         );
@@ -275,7 +296,9 @@ export function createApp(repo: Repository) {
           return c.redirect(target.pathname);
       }
       return c.redirect(
-        c.req.path.startsWith("/admin-panel/") ? "/admin-panel/" : "/login/",
+        c.req.path === "/admin" || c.req.path.startsWith("/admin/")
+          ? "/admin"
+          : "/login/",
       );
     }
     return c.text(message, status as 400);

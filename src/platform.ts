@@ -2,6 +2,7 @@ import { defaultPlatform } from "#platform-default";
 import type { Row } from "./repository";
 export interface Platform {
   siteUrl?: string;
+  testMode?: boolean;
   trustProxy?: boolean;
   secureCookies: boolean;
   passwordHash(password: string): Promise<string>;

@@ -78,17 +78,14 @@ if (process.env.PEERFLOW_STAGING_CREDENTIALS) {
 }
 assert.equal((await request("/setup/")).status, 404);
 for (const path of [
-  "/admin-panel/",
-  "/admin-panel/members/",
-  "/admin-panel/status/",
-  "/admin-panel/validation/",
-  "/admin-panel/messages/send/",
+  "/admin",
+  "/admin/members/",
+  "/admin/status/",
+  "/admin/validation/",
+  "/admin/messages/send/",
 ])
   assert.equal((await request(path)).status, 200, path);
-assert.equal(
-  (await request("/admin-panel/", undefined, new Map())).status,
-  302,
-);
+assert.equal((await request("/admin", undefined, new Map())).status, 302);
 const csv = new FormData();
 csv.set(
   "csv_file",
@@ -100,30 +97,53 @@ csv.set(
     { type: "text/csv" },
   ),
 );
-await post("/admin-panel/members/import-csv/", csv);
-const members = await (await request("/admin-panel/members/")).text();
+await post("/admin/members/import-csv/", csv);
+const members = await (await request("/admin/members/")).text();
 const ids = [...members.matchAll(/members\/(\d+)\/delete\//g)].map((m) => m[1]);
 assert.equal(ids.length, 2);
-const location = await post("/admin-panel/cycles/create/", {
+const location = await post("/admin/cycles/create/", {
   title: "Workers 원격 검증",
   start_at: new Date().toISOString(),
   end_at: new Date(Date.now() + 86400000).toISOString(),
 });
 const cycle = location.match(/cycles\/(\d+)\//)[1];
-await post(`/admin-panel/cycles/${cycle}/questions/add/`, {
+await post(`/admin/cycles/${cycle}/questions/add/`, {
   order: "1",
   question_type: "RATING",
   content: "협업 역량",
   scale_type: "NUMERIC_5",
   category: "기본",
 });
-await post(`/admin-panel/cycles/${cycle}/assignments/add/`, {
+await post(`/admin/cycles/${cycle}/assignments/add/`, {
   reviewer_id: ids[0],
   reviewee_id: ids[1],
 });
-await post(`/admin-panel/cycles/${cycle}/start/`);
-await post(`/admin-panel/cycles/${cycle}/close/`);
-const reportsPath = `/admin-panel/cycles/${cycle}/reports/`;
+await post(`/admin/cycles/${cycle}/start/`);
+const status = await (await request(`/admin/cycles/${cycle}/status/`)).text();
+const pin = status.match(/data-test-pin>(\d{6})</)?.[1];
+assert.ok(
+  pin,
+  "TEST_MODE must expose reviewer PIN only to authenticated admin",
+);
+const reviewer = new Map();
+await request("/login/", undefined, reviewer);
+assert.equal((await request("/login/", { code: pin }, reviewer)).status, 302);
+const dashboard = await (await request("/", undefined, reviewer)).text();
+const reviewPath = dashboard.match(/\/review\/\d+\//)?.[0];
+assert.ok(reviewPath);
+const review = await (await request(reviewPath, undefined, reviewer)).text();
+const rating = review.match(/name="(q_\d+_rating)"/)?.[1];
+assert.ok(rating);
+assert.equal(
+  (await request(reviewPath, { [rating]: "5" }, reviewer)).status,
+  302,
+);
+const completed = await (
+  await request(`/admin/cycles/${cycle}/status/`)
+).text();
+assert.ok(completed.includes("100%"));
+await post(`/admin/cycles/${cycle}/close/`);
+const reportsPath = `/admin/cycles/${cycle}/reports/`;
 let pdfPath;
 for (let i = 0; i < 90; i++) {
   const html = await (await request(reportsPath)).text();
@@ -132,7 +152,7 @@ for (let i = 0; i < 90; i++) {
       !html.includes('class="alert alert-error report-error"'),
     "Remote report generation failed",
   );
-  pdfPath = html.match(/\/admin-panel\/reports\/\d+\/pdf\//)?.[0];
+  pdfPath = html.match(/\/admin\/reports\/\d+\/pdf\//)?.[0];
   if (pdfPath) break;
   await new Promise((r) => setTimeout(r, 2000));
 }
@@ -150,7 +170,7 @@ const htmlResponse = await request(pdfPath.replace("/pdf/", "/preview-html/"));
 assert.equal(htmlResponse.status, 200);
 assert.match(htmlResponse.headers.get("content-security-policy"), /sandbox/);
 await writeFile(`${dir}/report.html`, await htmlResponse.text());
-await post(`/admin-panel/cycles/${cycle}/publish/`);
+await post(`/admin/cycles/${cycle}/publish/`);
 let sent = false;
 for (let i = 0; i < 45; i++) {
   const html = await (await request(reportsPath)).text();
@@ -179,16 +199,13 @@ await writeFile(
         "question",
         "assignment",
         "start/close",
+        "test mode PIN login and reviewer submission",
         "Queues",
         "R2 HTML/PDF",
         "remote Browser PDF Korean text",
         "Mock report delivery",
       ],
-      limitations: [
-        "No real Slack delivery",
-        "No remote reviewer PIN submission",
-        "No load or recovery test",
-      ],
+      limitations: ["No real Slack delivery", "No load or recovery test"],
     },
     null,
     2,

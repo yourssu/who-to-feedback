@@ -456,11 +456,11 @@ export function reportRows(repo: Repository, cycle: number) {
       report_id: r.id,
       reviewee: repo.require("members", r.reviewee_id),
       html_file: r.has_html
-        ? { url: `/admin-panel/reports/${r.id}/preview-html/` }
+        ? { url: `/admin/reports/${r.id}/preview-html/` }
         : null,
       pdf_file:
         r.pdf_status === "READY"
-          ? { url: `/admin-panel/reports/${r.id}/pdf/` }
+          ? { url: `/admin/reports/${r.id}/pdf/` }
           : null,
       validation_status: labels[r.validation_status],
       preview_data: compileFeedback(repo, cycle, r.reviewee_id),

@@ -1,6 +1,9 @@
 {% extends 'admin_custom/admin_base.html' %}
 {% block title %}진행 상태 · PeerFlow Admin{% endblock %}
 {% block admin_content %}
+{% if test_mode and test_pins|length %}
+<section class="card content-section"><h2 class="card-title">테스트용 리뷰어 PIN</h2><p>별도 시크릿 창에서 <a href="/login/" target="_blank" rel="noopener">리뷰어 로그인</a>을 열고 아래 PIN을 입력하세요. 관리자 로그인은 계속 유지할 수 있습니다.</p><div class="data-list">{% for pin in test_pins %}<div class="list-row"><strong>{{ pin.name }}</strong><code data-test-pin>{{ pin.code }}</code></div>{% endfor %}</div></section>
+{% endif %}
 {% if cycle %}
 <header class="page-head"><div><span class="eyebrow">LIVE STATUS</span><h1 class="page-title">진행 상태</h1><p class="page-description">{{ cycle.title }}의 제출 현황을 확인하고 필요한 운영 작업을 실행합니다.</p></div><div class="head-actions"><span class="badge badge-info">{{ cycle.get_status_display }}</span>{% if cycle.status == 'ACTIVE' %}<form method="post" action="{{ url('admin_send_reminder_action', {cycle_id: cycle.id}) }}" data-confirm="미작성 리뷰어에게 Slack DM 리마인더를 보낼까요?"><input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}"><button class="btn btn-primary" type="submit">미작성자 리마인더</button></form>{% endif %}</div></header>
 {% set step = 'status' %}{% include 'admin_custom/cycle_tabs.html' %}
