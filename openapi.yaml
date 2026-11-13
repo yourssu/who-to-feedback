@@ -1,0 +1,2008 @@
+openapi: 3.1.0
+info:
+  title: PeerFlow API
+  version: 2.0.0
+  summary: 비공개 피어리뷰 수집 및 리포트 배포 API
+  description: Cloudflare Workers + D1 + R2 + Queues 기반 피어리뷰 시스템 REST API 명세
+  license:
+    name: Proprietary
+servers:
+  - url: https://api.peerflow.example.com
+    description: 운영 서버 (Cloudflare Workers)
+  - url: http://localhost:8787
+    description: 로컬 개발 서버 (Wrangler)
+
+tags:
+  - name: system
+    description: 헬스 체크 및 시스템 상태
+  - name: auth
+    description: 초기 설정, 로그인·로그아웃 및 세션 조회
+  - name: members
+    description: 팀원 등록, 조회, 삭제 및 CSV 일괄 업로드
+  - name: cycles
+    description: 회차 생성, 조회, 상태 전환 및 리마인더 발송
+  - name: questions
+    description: 설문 문항 및 객관식 선택지 관리
+  - name: assignments
+    description: 리뷰어-피평가자 매칭 관리
+  - name: reports
+    description: 리포트(HTML·PDF) 조회, 미리보기, 재생성 및 발송 승인
+  - name: deliveries
+    description: Slack DM 발송 이력 조회 및 실패 건 재시도
+  - name: reviewer
+    description: 리뷰어 대시보드, 설문 조회, 임시 저장 및 제출
+  - name: media
+    description: 문항 첨부 이미지 스트리밍 조회
+
+paths:
+  /api/health:
+    get:
+      tags: [system]
+      operationId: getHealth
+      summary: 서버 및 DB 상태 확인
+      security: []
+      responses:
+        "200":
+          description: 정상 상태 반환
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /api/auth/setup-status:
+    get:
+      tags: [auth]
+      operationId: getSetupStatus
+      summary: 최초 관리자 설정 필요 여부 조회
+      security: []
+      responses:
+        "200":
+          description: 초기 설정 필요 여부 반환
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetupStatusResponse"
+
+  /api/auth/setup:
+    post:
+      tags: [auth]
+      operationId: createInitialAdmin
+      summary: 최초 관리자 계정 생성
+      description: 미설정 상태에서 최초 관리자 생성 및 세션 즉시 발급
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InitialAdminSetupRequest"
+      responses:
+        "201":
+          description: 최초 관리자 생성 및 세션 발급 완료
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/SetSessionCookie"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /api/auth/admin/login:
+    post:
+      tags: [auth]
+      operationId: loginAdmin
+      summary: 관리자 로그인
+      description: 아이디·비밀번호 기반 관리자 인증 및 세션 발급
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminLoginRequest"
+      responses:
+        "200":
+          description: 관리자 로그인 성공
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/SetSessionCookie"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "429":
+          $ref: "#/components/responses/TooManyRequestsError"
+
+  /api/auth/reviewer/login:
+    post:
+      tags: [auth]
+      operationId: loginReviewer
+      summary: 리뷰어 6자리 PIN 로그인
+      description: 진행 중(ACTIVE) 회차의 6자리 PIN 인증 및 세션 발급
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewerPinLoginRequest"
+      responses:
+        "200":
+          description: 리뷰어 로그인 성공
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/SetSessionCookie"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "429":
+          $ref: "#/components/responses/TooManyRequestsError"
+
+  /api/auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: 세션 로그아웃
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      responses:
+        "204":
+          description: 세션 삭제 및 쿠키 만료 완료
+
+  /api/auth/me:
+    get:
+      tags: [auth]
+      operationId: getCurrentSession
+      summary: 현재 로그인 세션 및 CSRF 토큰 조회
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: 현재 세션 정보 반환
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+
+  /api/admin/members:
+    get:
+      tags: [members]
+      operationId: listMembers
+      summary: 전체 팀원 목록 조회
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: 팀원 목록 반환
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberListResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+    post:
+      tags: [members]
+      operationId: createMember
+      summary: 팀원 단건 등록
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMemberRequest"
+      responses:
+        "201":
+          description: 팀원 등록 완료
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Member"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /api/admin/members/import-csv:
+    post:
+      tags: [members]
+      operationId: importMembersCsv
+      summary: 팀원 CSV 일괄 등록 및 업데이트
+      description: 이메일 기준 팀원 Upsert 처리 (최대 2MB, 10,000행, UTF-8/EUC-KR)
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [csv_file]
+              properties:
+                csv_file:
+                  type: string
+                  format: binary
+                  description: 팀원 CSV 파일 (.csv)
+      responses:
+        "200":
+          description: CSV 일괄 처리 결과 반환
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CsvImportResultResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "413":
+          $ref: "#/components/responses/PayloadTooLargeError"
+        "422":
+          description: CSV 행 데이터 유효성 검증 실패
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CsvValidationErrorResponse"
+
+  /api/admin/members/{memberId}:
+    delete:
+      tags: [members]
+      operationId: deleteMember
+      summary: 팀원 삭제
+      description: 매칭 및 리포트 이력이 없는 팀원 삭제
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/MemberIdPath"
+      responses:
+        "204":
+          description: 팀원 삭제 완료
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /api/admin/cycles:
+    get:
+      tags: [cycles]
+      operationId: listCycles
+      summary: 전체 회차 목록 조회
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: 회차 목록 및 요약 통계 반환
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CycleListResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+    post:
+      tags: [cycles]
+      operationId: createCycle
+      summary: 신규 회차 생성
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCycleRequest"
+      responses:
+        "201":
+          description: 회차(DRAFT) 생성 완료
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CycleDetail"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /api/admin/cycles/{cycleId}:
+    get:
+      tags: [cycles]
+      operationId: getCycle
+      summary: 회차 상세 및 리뷰어별 제출 현황 조회
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/CycleIdPath"
+      responses:
+        "200":
+          description: 회차 상세 및 리뷰어 진행 현황 반환
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CycleStatusDetailResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    patch:
+      tags: [cycles]
+      operationId: updateCycle
+      summary: 회차 기본 정보 및 안내 문구 수정
+      description: 제목·일시(DRAFT 전용) 및 리뷰어 안내 문구(CLOSED 이전) 수정
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CycleIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCycleRequest"
+      responses:
+        "200":
+          description: 수정된 회차 정보 반환
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CycleDetail"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /api/admin/cycles/{cycleId}/start:
+    post:
+      tags: [cycles]
+      operationId: startCycle
+      summary: 회차 시작 및 PIN 발급·발송
+      description: DRAFT → ACTIVE 상태 전환, 리뷰어 PIN 발급 및 Slack DM 발송 큐 등록
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CycleIdPath"
+      responses:
+        "200":
+          description: 회차 시작 완료
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CycleDetail"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /api/admin/cycles/{cycleId}/close:
+    post:
+      tags: [cycles]
+      operationId: closeCycle
+      summary: 회차 마감 및 전체 리포트 생성 요청
+      description: ACTIVE → COMPLETED 상태 전환 및 피평가자별 HTML·PDF 생성 큐 등록
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CycleIdPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CloseCycleRequest"
+      responses:
+        "202":
+          description: 회차 마감 및 리포트 생성 큐 등록 완료
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CycleDetail"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /api/admin/cycles/{cycleId}/reminders:
+    post:
+      tags: [cycles]
+      operationId: sendCycleReminders
+      summary: 미제출 리뷰어 리마인더 발송 요청
+      description: ACTIVE 회차 미제출 리뷰어 대상 Slack DM 발송 큐 등록
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CycleIdPath"
+      responses:
+        "202":
+          description: 리마인더 발송 큐 등록 완료
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueuedCountResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /api/admin/cycles/{cycleId}/questions:
+    get:
+      tags: [questions]
+      operationId: listCycleQuestions
+      summary: 회차별 설문 문항 및 선택지 목록 조회
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/CycleIdPath"
+      responses:
+        "200":
+          description: 문항 목록 반환
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuestionListResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    post:
+      tags: [questions]
+      operationId: createQuestion
+      summary: 설문 문항 추가
+      description: DRAFT 회차 문항 추가 (선택적 참고 이미지 R2 업로드 포함)
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CycleIdPath"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/CreateQuestionMultipartRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateQuestionJsonRequest"
+      responses:
+        "201":
+          description: 문항 생성 완료
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Question"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "413":
+          $ref: "#/components/responses/PayloadTooLargeError"
+
+  /api/admin/questions/{questionId}:
+    delete:
+      tags: [questions]
+      operationId: deleteQuestion
+      summary: 설문 문항 삭제
+      description: DRAFT 회차 문항 및 첨부 R2 이미지 삭제
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/QuestionIdPath"
+      responses:
+        "204":
+          description: 문항 삭제 완료
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /api/admin/questions/{questionId}/options:
+    post:
+      tags: [questions]
+      operationId: createQuestionOption
+      summary: 객관식 선택지 추가
+      description: DRAFT 회차 객관식 문항 선택지 등록
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/QuestionIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateQuestionOptionRequest"
+      responses:
+        "201":
+          description: 선택지 추가 완료
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuestionOption"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /api/admin/options/{optionId}:
+    delete:
+      tags: [questions]
+      operationId: deleteQuestionOption
+      summary: 객관식 선택지 삭제
+      description: DRAFT 회차 객관식 문항 선택지 삭제
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/OptionIdPath"
+      responses:
+        "204":
+          description: 선택지 삭제 완료
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /api/admin/cycles/{cycleId}/assignments:
+    get:
+      tags: [assignments]
+      operationId: listCycleAssignments
+      summary: 회차별 리뷰 매칭 목록 조회
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/CycleIdPath"
+      responses:
+        "200":
+          description: 매칭 목록 반환
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssignmentListResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    post:
+      tags: [assignments]
+      operationId: createAssignment
+      summary: 개별 리뷰 매칭 추가
+      description: DRAFT·ACTIVE 회차 매칭 추가 (ACTIVE 시 신규 리뷰어 PIN 즉시 발급)
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CycleIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAssignmentRequest"
+      responses:
+        "201":
+          description: 매칭 생성 완료
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssignmentSummary"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /api/admin/cycles/{cycleId}/assignments/auto-match:
+    post:
+      tags: [assignments]
+      operationId: autoMatchAssignments
+      summary: 리뷰 매칭 자동 생성
+      description: 전체 교차(ALL) 또는 동일 부서(SAME_DEPARTMENT) 기준 일괄 매칭
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CycleIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AutoMatchAssignmentsRequest"
+      responses:
+        "200":
+          description: 자동 매칭 생성 건수 반환
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutoMatchResultResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /api/admin/assignments/{assignmentId}:
+    delete:
+      tags: [assignments]
+      operationId: deleteAssignment
+      summary: 미제출 리뷰 매칭 삭제
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/AssignmentIdPath"
+      responses:
+        "204":
+          description: 매칭 삭제 완료
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /api/admin/cycles/{cycleId}/reports:
+    get:
+      tags: [reports]
+      operationId: listCycleReports
+      summary: 회차별 리포트 목록 조회
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/CycleIdPath"
+      responses:
+        "200":
+          description: 피평가자별 리포트 생성·승인 상태 목록 반환
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportListResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /api/admin/reports/{reportId}/regenerate:
+    post:
+      tags: [reports]
+      operationId: regenerateReport
+      summary: 개별 리포트 재생성 요청
+      description: 단일 피평가자 HTML·PDF 리포트 재생성 큐 등록
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/ReportIdPath"
+      responses:
+        "202":
+          description: 재생성 큐 등록 완료
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportSummary"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /api/admin/reports/{reportId}/html:
+    get:
+      tags: [reports]
+      operationId: getReportHtml
+      summary: HTML 리포트 조회 및 다운로드
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ReportIdPath"
+        - name: download
+          in: query
+          required: false
+          description: 파일 다운로드 헤더(attachment) 포함 여부
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: HTML 문서 반환
+          content:
+            text/html:
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /api/admin/reports/{reportId}/pdf:
+    get:
+      tags: [reports]
+      operationId: getReportPdf
+      summary: PDF 리포트 조회 및 다운로드
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ReportIdPath"
+      responses:
+        "200":
+          description: PDF 바이너리 반환
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /api/admin/cycles/{cycleId}/reports/publish:
+    post:
+      tags: [reports]
+      operationId: publishCycleReports
+      summary: 전체 리포트 승인 및 일괄 발송 요청
+      description: COMPLETED 회차 전체 리포트 승인(APPROVED) 및 Slack DM(HTML+PDF) 발송 큐 등록
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CycleIdPath"
+      responses:
+        "202":
+          description: 일괄 승인 및 발송 큐 등록 완료
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueuedCountResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /api/admin/cycles/{cycleId}/deliveries:
+    get:
+      tags: [deliveries]
+      operationId: listCycleDeliveries
+      summary: 회차별 Slack DM 발송 이력 조회
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/CycleIdPath"
+        - name: status
+          in: query
+          required: false
+          description: 발송 상태 필터
+          schema:
+            $ref: "#/components/schemas/DeliveryStatus"
+        - name: delivery_type
+          in: query
+          required: false
+          description: 발송 유형 필터
+          schema:
+            $ref: "#/components/schemas/DeliveryType"
+      responses:
+        "200":
+          description: 발송 이력 목록 반환
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryListResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /api/admin/cycles/{cycleId}/deliveries/retry-failed:
+    post:
+      tags: [deliveries]
+      operationId: retryFailedDeliveries
+      summary: 실패한 Slack DM 발송 일괄 재시도
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CycleIdPath"
+      responses:
+        "202":
+          description: 실패 건 재시도 큐 등록 완료
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueuedCountResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /api/reviewer/dashboard:
+    get:
+      tags: [reviewer]
+      operationId: getReviewerDashboard
+      summary: 리뷰어 배정 목록 및 진행률 조회
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: 리뷰어 대시보드 데이터 반환
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewerDashboardResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /api/reviewer/assignments/{assignmentId}:
+    get:
+      tags: [reviewer]
+      operationId: getReviewerAssignmentForm
+      summary: 배정된 리뷰 문항 및 작성 답변 조회
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/AssignmentIdPath"
+      responses:
+        "200":
+          description: 설문 문항 및 기존 답변(임시저장·제출본) 반환
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewerAssignmentFormResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /api/reviewer/assignments/{assignmentId}/draft:
+    put:
+      tags: [reviewer]
+      operationId: saveReviewerDraft
+      summary: 리뷰 답변 임시 저장
+      description: 미제출 리뷰 답변 부분 저장 (최대 100KB)
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/AssignmentIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewAnswersInput"
+      responses:
+        "200":
+          description: 임시 저장 완료
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DraftSavedResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "413":
+          $ref: "#/components/responses/PayloadTooLargeError"
+
+  /api/reviewer/assignments/{assignmentId}/submit:
+    post:
+      tags: [reviewer]
+      operationId: submitReviewerAssignment
+      summary: 리뷰 답변 최종 제출
+      description: 전체 문항 필수 응답 검증 및 원자적 저장 (제출 후 수정 불가)
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      parameters:
+        - $ref: "#/components/parameters/AssignmentIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewAnswersInput"
+      responses:
+        "200":
+          description: 최종 제출 완료
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssignmentSummary"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /api/media/questions/{questionId}/image:
+    get:
+      tags: [media]
+      operationId: getQuestionImage
+      summary: 문항 첨부 이미지 조회
+      description: R2 문항 이미지 스트리밍 반환 (관리자 또는 해당 회차 리뷰어 전용)
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/QuestionIdPath"
+      responses:
+        "200":
+          description: 이미지 바이너리 반환
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: peerflow_session
+      description: 세션 인증 쿠키 (HttpOnly, Secure, SameSite=Lax)
+    csrfHeader:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+      description: 상태 변경 요청용 CSRF 토큰 헤더
+
+  headers:
+    SetSessionCookie:
+      description: 세션 쿠키 설정 헤더 (peerflow_session)
+      schema:
+        type: string
+
+  parameters:
+    MemberIdPath:
+      name: memberId
+      in: path
+      required: true
+      description: 팀원 ID
+      schema:
+        type: integer
+        minimum: 1
+    CycleIdPath:
+      name: cycleId
+      in: path
+      required: true
+      description: 회차 ID
+      schema:
+        type: integer
+        minimum: 1
+    QuestionIdPath:
+      name: questionId
+      in: path
+      required: true
+      description: 문항 ID
+      schema:
+        type: integer
+        minimum: 1
+    OptionIdPath:
+      name: optionId
+      in: path
+      required: true
+      description: 선택지 ID
+      schema:
+        type: integer
+        minimum: 1
+    AssignmentIdPath:
+      name: assignmentId
+      in: path
+      required: true
+      description: 리뷰 매칭 ID
+      schema:
+        type: integer
+        minimum: 1
+    ReportIdPath:
+      name: reportId
+      in: path
+      required: true
+      description: 리포트 ID
+      schema:
+        type: integer
+        minimum: 1
+
+  responses:
+    BadRequestError:
+      description: 요청 파라미터 또는 입력값 검증 실패
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    UnauthorizedError:
+      description: 미인증 또는 만료된 세션·PIN
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ForbiddenError:
+      description: 접근 권한 없음 또는 CSRF 토큰 불일치
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFoundError:
+      description: 대상 리소스 없음
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ConflictError:
+      description: 리소스 중복 또는 허용되지 않는 상태 전이
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    PayloadTooLargeError:
+      description: 업로드 파일 또는 본문 크기 초과
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    TooManyRequestsError:
+      description: 로그인 연속 실패 잠금 (15분)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    CycleStatus:
+      type: string
+      enum: [DRAFT, ACTIVE, COMPLETED, CLOSED]
+      description: 회차 상태
+
+    QuestionType:
+      type: string
+      enum: [RATING, TEXT, SINGLE_CHOICE, MULTIPLE_CHOICE]
+      description: 문항 유형
+
+    ScaleType:
+      type: string
+      enum: [NUMERIC_5, TEXT_5]
+      description: 5점 척도 표기 방식
+
+    GenerationStatus:
+      type: string
+      enum: [PENDING, READY, FAILED]
+      description: 리포트 생성 상태
+
+    ApprovalStatus:
+      type: string
+      enum: [NEEDS_REVIEW, APPROVED, SENT]
+      description: 리포트 승인·발송 상태
+
+    DeliveryType:
+      type: string
+      enum: [PIN_ISSUE, REMINDER, REPORT]
+      description: Slack DM 발송 유형
+
+    DeliveryStatus:
+      type: string
+      enum: [PENDING, SENT, FAILED]
+      description: Slack DM 발송 상태
+
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          examples: [VALIDATION_ERROR, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, STATE_CONFLICT, RATE_LIMITED]
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [field, reason]
+            properties:
+              field:
+                type: string
+              reason:
+                type: string
+
+    HealthResponse:
+      type: object
+      additionalProperties: false
+      required: [status, timestamp]
+      properties:
+        status:
+          type: string
+          const: ok
+        timestamp:
+          type: string
+          format: date-time
+
+    SetupStatusResponse:
+      type: object
+      additionalProperties: false
+      required: [needs_setup]
+      properties:
+        needs_setup:
+          type: boolean
+
+    InitialAdminSetupRequest:
+      type: object
+      additionalProperties: false
+      required: [username, email, password]
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 50
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          minLength: 8
+          maxLength: 200
+
+    AdminLoginRequest:
+      type: object
+      additionalProperties: false
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 50
+        password:
+          type: string
+          minLength: 1
+          maxLength: 200
+
+    ReviewerPinLoginRequest:
+      type: object
+      additionalProperties: false
+      required: [pin_code]
+      properties:
+        pin_code:
+          type: string
+          pattern: "^[0-9]{6}$"
+          description: 6자리 숫자 PIN 코드
+
+    SessionResponse:
+      type: object
+      additionalProperties: false
+      required: [role, csrf_token, expires_at]
+      properties:
+        role:
+          type: string
+          enum: [ADMIN, REVIEWER]
+        csrf_token:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        admin:
+          type: ["object", "null"]
+          additionalProperties: false
+          required: [id, username, email]
+          properties:
+            id:
+              type: integer
+            username:
+              type: string
+            email:
+              type: string
+              format: email
+        reviewer:
+          type: ["object", "null"]
+          additionalProperties: false
+          required: [member_id, name, department, cycle_id, cycle_title]
+          properties:
+            member_id:
+              type: integer
+            name:
+              type: string
+            department:
+              type: string
+            cycle_id:
+              type: integer
+            cycle_title:
+              type: string
+
+    Member:
+      type: object
+      additionalProperties: false
+      required: [id, name, email, department, slack_user_id, created_at, updated_at]
+      properties:
+        id:
+          type: integer
+          minimum: 1
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        department:
+          type: string
+        slack_user_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    MemberListResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Member"
+
+    CreateMemberRequest:
+      type: object
+      additionalProperties: false
+      required: [name, email]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        department:
+          type: string
+          maxLength: 100
+          default: ""
+        slack_user_id:
+          type: string
+          maxLength: 50
+          default: ""
+
+    CsvImportResultResponse:
+      type: object
+      additionalProperties: false
+      required: [created_count, updated_count]
+      properties:
+        created_count:
+          type: integer
+          minimum: 0
+        updated_count:
+          type: integer
+          minimum: 0
+
+    CsvValidationErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [code, message, row_index, reason]
+      properties:
+        code:
+          type: string
+          const: CSV_VALIDATION_ERROR
+        message:
+          type: string
+        row_index:
+          type: integer
+          minimum: 1
+          description: 오류 발생 행 번호 (헤더=1행 기준)
+        reason:
+          type: string
+
+    CycleDetail:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - title
+        - status
+        - start_at
+        - end_at
+        - reviewer_notice_message
+        - total_assignments_count
+        - submitted_assignments_count
+        - completion_rate
+        - is_all_submitted
+        - is_deadline_passed
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: integer
+          minimum: 1
+        title:
+          type: string
+        status:
+          $ref: "#/components/schemas/CycleStatus"
+        start_at:
+          type: string
+          format: date-time
+        end_at:
+          type: string
+          format: date-time
+        reviewer_notice_message:
+          type: string
+        total_assignments_count:
+          type: integer
+          minimum: 0
+        submitted_assignments_count:
+          type: integer
+          minimum: 0
+        completion_rate:
+          type: integer
+          minimum: 0
+          maximum: 100
+        is_all_submitted:
+          type: boolean
+        is_deadline_passed:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CycleListResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CycleDetail"
+
+    CreateCycleRequest:
+      type: object
+      additionalProperties: false
+      required: [title, start_at, end_at]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        start_at:
+          type: string
+          format: date-time
+        end_at:
+          type: string
+          format: date-time
+        reviewer_notice_message:
+          type: string
+          maxLength: 5000
+
+    UpdateCycleRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        start_at:
+          type: string
+          format: date-time
+        end_at:
+          type: string
+          format: date-time
+        reviewer_notice_message:
+          type: string
+          maxLength: 5000
+
+    CloseCycleRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        require_all_submitted:
+          type: boolean
+          default: false
+          description: 전원 제출 완료 필수 여부
+
+    CycleStatusDetailResponse:
+      type: object
+      additionalProperties: false
+      required: [cycle, reviewer_progress]
+      properties:
+        cycle:
+          $ref: "#/components/schemas/CycleDetail"
+        reviewer_progress:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - reviewer
+              - total_count
+              - submitted_count
+              - is_all_done
+              - unsubmitted_reviewees
+            properties:
+              reviewer:
+                $ref: "#/components/schemas/Member"
+              total_count:
+                type: integer
+                minimum: 0
+              submitted_count:
+                type: integer
+                minimum: 0
+              is_all_done:
+                type: boolean
+              unsubmitted_reviewees:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Member"
+
+    QuestionOption:
+      type: object
+      additionalProperties: false
+      required: [id, question_id, display_order, option_text]
+      properties:
+        id:
+          type: integer
+          minimum: 1
+        question_id:
+          type: integer
+          minimum: 1
+        display_order:
+          type: integer
+          minimum: 1
+        option_text:
+          type: string
+
+    Question:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - cycle_id
+        - display_order
+        - question_type
+        - scale_type
+        - category
+        - content
+        - image_url
+        - options
+        - created_at
+      properties:
+        id:
+          type: integer
+          minimum: 1
+        cycle_id:
+          type: integer
+          minimum: 1
+        display_order:
+          type: integer
+          minimum: 1
+          maximum: 1000
+        question_type:
+          $ref: "#/components/schemas/QuestionType"
+        scale_type:
+          $ref: "#/components/schemas/ScaleType"
+        category:
+          type: string
+        content:
+          type: string
+        image_url:
+          type: ["string", "null"]
+          description: 문항 이미지 조회 경로 (/api/media/questions/{questionId}/image)
+        options:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuestionOption"
+        created_at:
+          type: string
+          format: date-time
+
+    QuestionListResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Question"
+
+    CreateQuestionJsonRequest:
+      type: object
+      additionalProperties: false
+      required: [display_order, question_type, content]
+      properties:
+        display_order:
+          type: integer
+          minimum: 1
+          maximum: 1000
+        question_type:
+          $ref: "#/components/schemas/QuestionType"
+        scale_type:
+          $ref: "#/components/schemas/ScaleType"
+          default: NUMERIC_5
+        category:
+          type: string
+          minLength: 1
+          maxLength: 100
+          default: 기본 역량
+        content:
+          type: string
+          minLength: 1
+          maxLength: 5000
+
+    CreateQuestionMultipartRequest:
+      type: object
+      additionalProperties: false
+      required: [display_order, question_type, content]
+      properties:
+        display_order:
+          type: integer
+          minimum: 1
+          maximum: 1000
+        question_type:
+          $ref: "#/components/schemas/QuestionType"
+        scale_type:
+          $ref: "#/components/schemas/ScaleType"
+          default: NUMERIC_5
+        category:
+          type: string
+          minLength: 1
+          maxLength: 100
+          default: 기본 역량
+        content:
+          type: string
+          minLength: 1
+          maxLength: 5000
+        image:
+          type: string
+          format: binary
+          description: 문항 참고 이미지 (PNG, JPEG, WebP, 최대 10MB)
+
+    CreateQuestionOptionRequest:
+      type: object
+      additionalProperties: false
+      required: [option_text]
+      properties:
+        option_text:
+          type: string
+          minLength: 1
+          maxLength: 200
+
+    AssignmentSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - cycle_id
+        - reviewer
+        - reviewee
+        - is_submitted
+        - submitted_at
+        - draft_saved_at
+        - last_reminded_at
+        - created_at
+      properties:
+        id:
+          type: integer
+          minimum: 1
+        cycle_id:
+          type: integer
+          minimum: 1
+        reviewer:
+          $ref: "#/components/schemas/Member"
+        reviewee:
+          $ref: "#/components/schemas/Member"
+        is_submitted:
+          type: boolean
+        submitted_at:
+          type: ["string", "null"]
+          format: date-time
+        draft_saved_at:
+          type: ["string", "null"]
+          format: date-time
+        last_reminded_at:
+          type: ["string", "null"]
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    AssignmentListResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssignmentSummary"
+
+    CreateAssignmentRequest:
+      type: object
+      additionalProperties: false
+      required: [reviewer_id, reviewee_id]
+      properties:
+        reviewer_id:
+          type: integer
+          minimum: 1
+        reviewee_id:
+          type: integer
+          minimum: 1
+
+    AutoMatchAssignmentsRequest:
+      type: object
+      additionalProperties: false
+      required: [match_type]
+      properties:
+        match_type:
+          type: string
+          enum: [ALL, SAME_DEPARTMENT]
+          description: 자동 매칭 범위 (전체 또는 동일 부서)
+
+    AutoMatchResultResponse:
+      type: object
+      additionalProperties: false
+      required: [created_count]
+      properties:
+        created_count:
+          type: integer
+          minimum: 0
+
+    ReportSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - cycle_id
+        - reviewee
+        - revision
+        - generation_status
+        - approval_status
+        - html_url
+        - pdf_url
+        - error_message
+        - sent_at
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: integer
+          minimum: 1
+        cycle_id:
+          type: integer
+          minimum: 1
+        reviewee:
+          $ref: "#/components/schemas/Member"
+        revision:
+          type: integer
+          minimum: 1
+        generation_status:
+          $ref: "#/components/schemas/GenerationStatus"
+        approval_status:
+          $ref: "#/components/schemas/ApprovalStatus"
+        html_url:
+          type: ["string", "null"]
+          description: HTML 미리보기 경로 (/api/admin/reports/{reportId}/html)
+        pdf_url:
+          type: ["string", "null"]
+          description: PDF 다운로드 경로 (/api/admin/reports/{reportId}/pdf)
+        error_message:
+          type: string
+        sent_at:
+          type: ["string", "null"]
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ReportListResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReportSummary"
+
+    DeliveryRecord:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - cycle_id
+        - member
+        - report_id
+        - delivery_type
+        - status
+        - attempts
+        - error_message
+        - sent_at
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: integer
+          minimum: 1
+        cycle_id:
+          type: integer
+          minimum: 1
+        member:
+          $ref: "#/components/schemas/Member"
+        report_id:
+          type: ["integer", "null"]
+        delivery_type:
+          $ref: "#/components/schemas/DeliveryType"
+        status:
+          $ref: "#/components/schemas/DeliveryStatus"
+        attempts:
+          type: integer
+          minimum: 0
+        error_message:
+          type: string
+        sent_at:
+          type: ["string", "null"]
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    DeliveryListResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeliveryRecord"
+
+    QueuedCountResponse:
+      type: object
+      additionalProperties: false
+      required: [queued_count]
+      properties:
+        queued_count:
+          type: integer
+          minimum: 0
+
+    ReviewerDashboardResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - cycle
+        - reviewer
+        - total_count
+        - submitted_count
+        - completion_rate
+        - can_write
+        - assignments
+      properties:
+        cycle:
+          $ref: "#/components/schemas/CycleDetail"
+        reviewer:
+          $ref: "#/components/schemas/Member"
+        total_count:
+          type: integer
+          minimum: 0
+        submitted_count:
+          type: integer
+          minimum: 0
+        completion_rate:
+          type: integer
+          minimum: 0
+          maximum: 100
+        can_write:
+          type: boolean
+        assignments:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssignmentSummary"
+
+    QuestionAnswerItem:
+      type: object
+      additionalProperties: false
+      required: [question_id]
+      properties:
+        question_id:
+          type: integer
+          minimum: 1
+        rating_value:
+          type: ["integer", "null"]
+          minimum: 1
+          maximum: 5
+          description: 척도 점수 (1~5)
+        answer_text:
+          type: ["string", "null"]
+          maxLength: 2000
+          description: 서술형 답변 (최대 2,000자)
+        option_ids:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+          uniqueItems: true
+          description: 선택지 ID 배열
+
+    ReviewAnswersInput:
+      type: object
+      additionalProperties: false
+      required: [answers]
+      properties:
+        answers:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuestionAnswerItem"
+
+    ReviewerAssignmentFormResponse:
+      type: object
+      additionalProperties: false
+      required: [assignment, cycle, is_locked, questions, answers]
+      properties:
+        assignment:
+          $ref: "#/components/schemas/AssignmentSummary"
+        cycle:
+          $ref: "#/components/schemas/CycleDetail"
+        is_locked:
+          type: boolean
+        questions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Question"
+        answers:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuestionAnswerItem"
+
+    DraftSavedResponse:
+      type: object
+      additionalProperties: false
+      required: [saved_at]
+      properties:
+        saved_at:
+          type: string
+          format: date-time

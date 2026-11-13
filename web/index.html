@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PeerFlow — 팀 상호 피어리뷰 시스템</title>
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem("peerflow_theme");
+        var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+        var theme = saved === "dark" || saved === "light" ? saved : (prefersDark ? "dark" : "light");
+        document.documentElement.setAttribute("data-theme", theme);
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a href="/" class="brand" data-link>
+        <span class="brand-dot"></span>
+        <span>PeerFlow</span>
+      </a>
+      <div class="topbar-actions" id="nav-actions"></div>
+    </div>
+  </header>
+
+  <main class="container">
+    <div id="toast-container" class="toast-container"></div>
+    <div id="app-root"></div>
+  </main>
+
+  <div id="confirm-modal" class="modal-backdrop" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title">
+      <h3 id="confirm-modal-title" class="modal-title">확인</h3>
+      <p id="confirm-modal-message" class="modal-message"></p>
+      <div class="modal-actions">
+        <button type="button" id="confirm-modal-cancel" class="btn btn-outline">취소</button>
+        <button type="button" id="confirm-modal-ok" class="btn">확인</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

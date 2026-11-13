@@ -1,0 +1,71 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "peerflow",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-23",
+  "compatibility_flags": ["nodejs_compat"],
+  // 커스텀 도메인 없이 기본 *.workers.dev 서브도메인으로만 배포합니다.
+  "workers_dev": true,
+  "assets": {
+    "directory": "./web",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": true
+  },
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    // "true" 설정 시 실제 Slack API 호출 없이 발송 성공으로 시뮬레이션합니다.
+    // 실제 Slack DM 발송 테스트 시 "false"로 변경하고 SLACK_BOT_TOKEN 시크릿을 등록하세요.
+    "MOCK_SLACK_MODE": "true"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "peerflow-db",
+      // scripts/deploy.sh 실행 시 자동으로 생성된 D1 database_id로 치환됩니다.
+      // 수동 배포 시 본인의 D1 Database UUID를 입력하세요.
+      "database_id": "11586496-b9f4-4df5-bf82-b79b5c708352",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "peerflow-files"
+    }
+  ],
+  "browser": {
+    "binding": "BROWSER"
+  },
+  "queues": {
+    "producers": [
+      {
+        "binding": "REPORT_QUEUE",
+        "queue": "peerflow-report-queue"
+      },
+      {
+        "binding": "DELIVERY_QUEUE",
+        "queue": "peerflow-delivery-queue"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "peerflow-report-queue",
+        "max_batch_size": 10,
+        "max_concurrency": 1,
+        "max_retries": 20
+      },
+      {
+        "queue": "peerflow-delivery-queue",
+        "max_batch_size": 5,
+        "max_concurrency": 2,
+        "max_retries": 3
+      }
+    ]
+  },
+  "triggers": {
+    "crons": ["0 * * * *"]
+  }
+}

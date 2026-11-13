@@ -1,0 +1,5 @@
+# 로컬 개발 서버(npm run dev / wrangler dev)용 시크릿 변수 예시
+# 필요 시 .dev.vars 로 복사하여 사용하세요.
+MOCK_SLACK_MODE=true
+SLACK_BOT_TOKEN=xoxb-YOUR-SLACK-BOT-TOKEN-HERE
+SITE_URL=http://127.0.0.1:8787

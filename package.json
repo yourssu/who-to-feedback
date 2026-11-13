@@ -1,0 +1,25 @@
+{
+  "name": "peerflow",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "bash ./scripts/deploy.sh",
+    "db:migrate:local": "wrangler d1 migrations apply peerflow-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply peerflow-db --remote",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --no-warnings --test tests/**/*.test.ts"
+  },
+  "dependencies": {
+    "@cloudflare/puppeteer": "^2.0.0",
+    "hono": "^4.10.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261110.1",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.8.2",
+    "wrangler": "^4.0.0"
+  }
+}
